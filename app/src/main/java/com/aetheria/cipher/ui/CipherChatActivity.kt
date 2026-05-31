@@ -38,6 +38,7 @@ import com.aetheria.cipher.ui.theme.CipherTheme
 import com.aetheria.cipher.voice.VoicePipeline
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
