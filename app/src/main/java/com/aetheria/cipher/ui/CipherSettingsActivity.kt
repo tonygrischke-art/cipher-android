@@ -14,9 +14,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -179,7 +179,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                Icon(Icons.Default.Menu, contentDescription = "Back")
             }
             Text(
                 text = "Settings",
@@ -289,7 +289,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
                 },
                 trailingIcon = {
                     IconButton(onClick = { groqKeyVisible = !groqKeyVisible }) {
-                        Icon(Icons.Default.Visibility, contentDescription = "Toggle visibility")
+                        Icon(Icons.Default.Lock, contentDescription = "Toggle visibility")
                     }
                 }
             )
@@ -312,7 +312,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
                 },
                 trailingIcon = {
                     IconButton(onClick = { picovoiceKeyVisible = !picovoiceKeyVisible }) {
-                        Icon(Icons.Default.Visibility, contentDescription = "Toggle visibility")
+                        Icon(Icons.Default.Lock, contentDescription = "Toggle visibility")
                     }
                 }
             )
@@ -345,7 +345,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Download, contentDescription = null)
+                Icon(Icons.Default.Edit, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Export Conversation History")
             }

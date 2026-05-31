@@ -116,8 +116,7 @@ class OnboardingViewModel @Inject constructor(
     var currentPage by mutableIntStateOf(0)
         private set
 
-    var permissionsGranted by mutableStateMapOf<String, Boolean>()
-        private set
+    val permissionsGranted = mutableStateMapOf<String, Boolean>()
 
     var shizukuAvailable by mutableStateOf(false)
         private set
@@ -148,7 +147,7 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun updatePermission(permission: String, granted: Boolean) {
-        permissionsGranted.put(permission, granted)
+        permissionsGranted[permission] = granted
     }
 
     fun checkAccessibility(context: android.content.Context) {
@@ -371,7 +370,7 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.PanoramaFishEye,
+                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Add,
                         contentDescription = null,
                         tint = if (granted) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant
