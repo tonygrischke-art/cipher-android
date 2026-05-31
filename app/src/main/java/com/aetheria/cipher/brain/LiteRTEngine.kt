@@ -18,6 +18,7 @@ import java.io.File
  *   - REASONING → gemma-3n-E2B-it-int4.litertlm      (gemma-3n, general reasoning)
  */
 class LiteRTEngine(
+    private val context: android.content.Context,
     private val modelDir: String = "/data/local/tmp/cipher_models/"
 ) {
 
@@ -59,7 +60,7 @@ class LiteRTEngine(
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
             .build()
-        val session = LlmInference.createFromOptions(options)
+        val session = LlmInference.createFromOptions(context, options)
         sessions[slot] = session
         Log.d(TAG, "Session ready for ${slot.name}")
         return session

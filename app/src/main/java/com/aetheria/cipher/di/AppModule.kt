@@ -27,8 +27,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideLiteRTEngine(): LiteRTEngine {
-        return LiteRTEngine()
+    fun provideLiteRTEngine(@ApplicationContext context: Context): LiteRTEngine {
+        return LiteRTEngine(context)
     }
 
     @Provides
