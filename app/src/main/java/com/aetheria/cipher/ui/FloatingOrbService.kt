@@ -1,32 +1,39 @@
 package com.aetheria.cipher.ui
 
+import android.animation.ValueAnimator
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.PixelFormat
+import android.graphics.*
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import com.aetheria.cipher.voice.VoicePipeline
+import kotlinx.coroutines.*
 import kotlin.math.abs
+import kotlin.math.sin
 
 class FloatingOrbService : Service() {
 
     companion object {
         private const val TAG = "FloatingOrbService"
+        const val ACTION_SET_STATE = "com.aetheria.cipher.SET_ORB_STATE"
+        const val EXTRA_STATE = "state"
     }
 
     private var windowManager: WindowManager? = null
-    private var orbView: FrameLayout? = null
+    private var orbView: OrbCanvasView? = null
     private var stateReceiver: BroadcastReceiver? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    enum class OrbState { IDLE, LISTENING, THINKING, SPEAKING }
+    enum class OrbState { IDLE, LISTENING, THINKING, SPEAKING, ERROR }
 
     override fun onCreate() {
         super.onCreate()
@@ -36,15 +43,16 @@ class FloatingOrbService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.getStringExtra("state")?.let { state ->
+        intent?.getStringExtra(EXTRA_STATE)?.let { state ->
             try { setOrbState(OrbState.valueOf(state)) } catch (_: Exception) {}
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     override fun onDestroy() {
         unregisterStateReceiver()
         destroyOrb()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -52,11 +60,7 @@ class FloatingOrbService : Service() {
 
     fun setOrbState(state: OrbState) {
         Log.d(TAG, "Orb state: $state")
-        // TODO: Update orb animation based on state
-        // IDLE -> pulse animation
-        // LISTENING -> wave animation
-        // THINKING -> spinner
-        // SPEAKING -> glow
+        orbView?.setState(state)
     }
 
     private fun registerStateReceiver() {
@@ -73,7 +77,6 @@ class FloatingOrbService : Service() {
             @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
             registerReceiver(stateReceiver, filter)
         }
-        Log.d(TAG, "State receiver registered")
     }
 
     private fun unregisterStateReceiver() {
@@ -101,17 +104,17 @@ class FloatingOrbService : Service() {
             y = 200
         }
 
-        orbView = FrameLayout(this).apply {
-            // TODO: Set orb drawable
-
-            setOnTouchListener(object : android.view.View.OnTouchListener {
+        orbView = OrbCanvasView(this).apply {
+            setOnTouchListener(object : View.OnTouchListener {
                 private var initialX = 0
                 private var initialY = 0
                 private var initialTouchX = 0f
                 private var initialTouchY = 0f
                 private var isDragging = false
+                private var tapCount = 0
+                private var lastTapTime = 0L
 
-                override fun onTouch(v: android.view.View?, event: MotionEvent?): Boolean {
+                override fun onTouch(v: View?, event: MotionEvent?): Boolean {
                     when (event?.action) {
                         MotionEvent.ACTION_DOWN -> {
                             initialX = params.x
@@ -131,15 +134,36 @@ class FloatingOrbService : Service() {
                             return true
                         }
                         MotionEvent.ACTION_UP -> {
-                            if (!isDragging) onOrbTap()
+                            if (!isDragging) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastTapTime < 300) {
+                                    tapCount++
+                                } else {
+                                    tapCount = 1
+                                }
+                                lastTapTime = now
+
+                                when (tapCount) {
+                                    1 -> {
+                                        // Single tap → expand chat
+                                        serviceScope.launch {
+                                            delay(310)
+                                            if (tapCount == 1) onOrbTap()
+                                        }
+                                    }
+                                    2 -> {
+                                        // Double tap → toggle mute
+                                        tapCount = 0
+                                        onOrbDoubleTap()
+                                    }
+                                }
+                            }
                             return true
                         }
                     }
                     return false
                 }
             })
-
-            setOnClickListener { onOrbTap() }
         }
 
         try {
@@ -158,10 +182,180 @@ class FloatingOrbService : Service() {
 
     private fun onOrbTap() {
         Log.d(TAG, "Orb tapped — expanding chat UI")
-        val intent = Intent(this, com.aetheria.cipher.ui.MainActivity::class.java).apply {
+        val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("show_chat", true)
         }
         startActivity(intent)
+    }
+
+    private fun onOrbDoubleTap() {
+        Log.d(TAG, "Orb double-tapped — toggling mute")
+        // Toggle mute via broadcast
+        sendBroadcast(Intent("com.aetheria.cipher.TOGGLE_MUTE").apply {
+            setPackage(packageName)
+        })
+    }
+}
+
+// ── Custom Canvas View for Orb Animations ─────────────────────────
+
+class OrbCanvasView(context: Context) : FrameLayout(context) {
+
+    private var currentState = FloatingOrbService.OrbState.IDLE
+    private var animationTime = 0f
+    private var isMuted = false
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var animator: ValueAnimator? = null
+
+    init {
+        setWillNotDraw(false)
+        startAnimationLoop()
+    }
+
+    fun setState(state: FloatingOrbService.OrbState) {
+        currentState = state
+        animationTime = 0f
+        invalidate()
+    }
+
+    fun setMuted(muted: Boolean) {
+        isMuted = muted
+        invalidate()
+    }
+
+    private fun startAnimationLoop() {
+        animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 16 // ~60fps
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.RESTART
+            addUpdateListener {
+                animationTime += 0.016f
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val cx = width / 2f
+        val cy = height / 2f
+        val baseRadius = width / 3f
+
+        when (currentState) {
+            FloatingOrbService.OrbState.IDLE -> drawIdleOrb(canvas, cx, cy, baseRadius)
+            FloatingOrbService.OrbState.LISTENING -> drawListeningOrb(canvas, cx, cy, baseRadius)
+            FloatingOrbService.OrbState.THINKING -> drawThinkingOrb(canvas, cx, cy, baseRadius)
+            FloatingOrbService.OrbState.SPEAKING -> drawSpeakingOrb(canvas, cx, cy, baseRadius)
+            FloatingOrbService.OrbState.ERROR -> drawErrorOrb(canvas, cx, cy, baseRadius)
+        }
+
+        if (isMuted) {
+            paint.color = Color.argb(128, 255, 0, 0)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            canvas.drawLine(cx - 15, cy - 15, cx + 15, cy + 15, paint)
+        }
+    }
+
+    private fun drawIdleOrb(canvas: Canvas, cx: Float, cy: Float, baseRadius: Float) {
+        // Breathing pulse
+        val pulse = sin(animationTime * 2f) * 0.1f + 1f
+        val radius = baseRadius * pulse
+
+        // Outer glow
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(40, 108, 99, 255)
+        canvas.drawCircle(cx, cy, radius * 1.3f, paint)
+
+        // Main orb
+        paint.color = Color.argb(200, 108, 99, 255)
+        canvas.drawCircle(cx, cy, radius, paint)
+
+        // Inner highlight
+        paint.color = Color.argb(100, 255, 255, 255)
+        canvas.drawCircle(cx - radius * 0.2f, cy - radius * 0.2f, radius * 0.3f, paint)
+    }
+
+    private fun drawListeningOrb(canvas: Canvas, cx: Float, cy: Float, baseRadius: Float) {
+        // Expanding wave ripples
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+
+        for (i in 0..2) {
+            val phase = (animationTime * 3f + i * 0.33f) % 1f
+            val radius = baseRadius * (0.8f + phase * 0.8f)
+            val alpha = ((1f - phase) * 200).toInt().coerceIn(0, 255)
+            paint.color = Color.argb(alpha, 0, 218, 198)
+            canvas.drawCircle(cx, cy, radius, paint)
+        }
+
+        // Main orb
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(220, 0, 218, 198)
+        canvas.drawCircle(cx, cy, baseRadius * 0.8f, paint)
+    }
+
+    private fun drawThinkingOrb(canvas: Canvas, cx: Float, cy: Float, baseRadius: Float) {
+        // Spinning arc
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 4f
+        paint.color = Color.argb(220, 255, 160, 0)
+
+        val sweepAngle = (animationTime * 360f) % 360f
+        val rect = RectF(cx - baseRadius, cy - baseRadius, cx + baseRadius, cy + baseRadius)
+        canvas.drawArc(rect, sweepAngle, 120f, false, paint)
+
+        // Inner orb
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(100, 255, 160, 0)
+        canvas.drawCircle(cx, cy, baseRadius * 0.6f, paint)
+    }
+
+    private fun drawSpeakingOrb(canvas: Canvas, cx: Float, cy: Float, baseRadius: Float) {
+        // Audio waveform bars
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb(220, 76, 175, 80)
+
+        val barCount = 5
+        val barWidth = baseRadius * 0.15f
+        val spacing = barWidth * 1.5f
+        val startX = cx - (barCount * spacing) / 2f
+
+        for (i in 0 until barCount) {
+            val phase = sin(animationTime * 8f + i * 0.8f)
+            val barHeight = baseRadius * 0.3f + phase * baseRadius * 0.4f
+            val left = startX + i * spacing
+            val top = cy - barHeight / 2f
+            canvas.drawRoundRect(
+                left, top, left + barWidth, top + barHeight,
+                barWidth / 2, barWidth / 2, paint
+            )
+        }
+
+        // Main orb
+        paint.color = Color.argb(100, 76, 175, 80)
+        canvas.drawCircle(cx, cy, baseRadius * 0.5f, paint)
+    }
+
+    private fun drawErrorOrb(canvas: Canvas, cx: Float, cy: Float, baseRadius: Float) {
+        // Red flash
+        val flash = if (animationTime < 0.5f) 1f else 0.3f
+
+        paint.style = Paint.Style.FILL
+        paint.color = Color.argb((200 * flash).toInt(), 244, 67, 54)
+        canvas.drawCircle(cx, cy, baseRadius, paint)
+
+        // Reset to idle after brief flash
+        if (animationTime > 1f) {
+            currentState = FloatingOrbService.OrbState.IDLE
+            animationTime = 0f
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        animator?.cancel()
     }
 }

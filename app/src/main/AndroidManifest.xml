@@ -47,15 +47,30 @@
         tools:targetApi="34">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.OnboardingActivity"
             android:exported="true"
-            android:launchMode="singleTask"
             android:theme="@style/Theme.Cipher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.CipherChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cipher" />
+
+        <activity
+            android:name=".ui.CipherSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Cipher" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Cipher" />
 
         <!-- CipherCore foreground service — always running -->
         <service

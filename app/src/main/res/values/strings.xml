@@ -8,4 +8,19 @@
     <string name="notification_listener_description">
         Cipher intercepts notifications to read important ones aloud and act on them.
     </string>
+    <string name="onboarding_welcome_title">Meet Cipher</string>
+    <string name="onboarding_welcome_subtitle">Your autonomous AI agent.</string>
+    <string name="onboarding_welcome_desc">Runs entirely on your phone. No cloud. No compromise.</string>
+    <string name="onboarding_permissions_title">Permissions</string>
+    <string name="onboarding_permissions_desc">Cipher needs these to work properly</string>
+    <string name="onboarding_accessibility_title">Accessibility</string>
+    <string name="onboarding_accessibility_desc">Cipher uses Accessibility Service to read your screen, tap buttons, and navigate apps by voice. This data never leaves your phone.</string>
+    <string name="onboarding_shizuku_title">Shizuku</string>
+    <string name="onboarding_shizuku_desc">Shizuku gives Cipher elevated system access for shell commands, system settings, and screenshots. Optional — Cipher works without it.</string>
+    <string name="onboarding_wakeword_title">Wake Word</string>
+    <string name="onboarding_wakeword_desc">Say \"Hey Cipher\" to test your wake word</string>
+    <string name="onboarding_api_keys_title">API Keys</string>
+    <string name="onboarding_api_keys_desc">Optional — for cloud fallback and custom wake words</string>
+    <string name="onboarding_ready_title">Cipher is ready.</string>
+    <string name="onboarding_ready_desc">Voice commands • App control • Screen reading • SMS & calls • System settings • Shell access</string>
 </resources>
