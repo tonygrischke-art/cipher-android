@@ -229,8 +229,8 @@ class ContextEngine(private val context: Context) {
                 CalendarContract.Events.DTSTART,
                 CalendarContract.Events.EVENT_LOCATION
             )
-            val selection = "${CalendarContract.Events.DTSTART} >= ? AND ${CalendarContract.Events.AVAILABILITY} != ?"
-            val selectionArgs = arrayOf(now.toString(), CalendarContract.Events.AVAILABILITY_BUSY.toString())
+            val selection = "${CalendarContract.Events.DTSTART} >= ?"
+            val selectionArgs = arrayOf(now.toString())
             val sortOrder = "${CalendarContract.Events.DTSTART} ASC LIMIT 1"
 
             val cursor = context.contentResolver.query(
@@ -270,7 +270,7 @@ class ContextEngine(private val context: Context) {
                     cont.invokeOnCancellation { /* no-op */ }
                 }
                 if (location != null) {
-                    val geocoder = android.location.Geocoder(context, Locale.getDefault)
+                    val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
                     @Suppress("DEPRECATION")
                     val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
                     addresses?.firstOrNull()?.let { addr ->
