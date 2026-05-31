@@ -12,6 +12,7 @@
     <!-- Communication -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
@@ -25,6 +26,10 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+
+    <!-- Shizuku -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <!-- Hardware features -->
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -102,6 +107,13 @@
             android:enabled="true"
             android:exported="false"
             android:multiprocess="false" />
+
+        <!-- CipherUserService for Shizuku -->
+        <service
+            android:name=".shizuku.CipherUserService"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="moe.shizuku.manager.permission.API_V23" />
 
         <!-- Boot receiver — auto-start CipherCore -->
         <receiver

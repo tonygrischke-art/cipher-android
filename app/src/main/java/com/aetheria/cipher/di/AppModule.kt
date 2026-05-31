@@ -2,6 +2,9 @@ package com.aetheria.cipher.di
 
 import android.content.Context
 import com.aetheria.cipher.actions.ActionExecutor
+import com.aetheria.cipher.actions.IntentHandler
+import com.aetheria.cipher.actions.SmsHandler
+import com.aetheria.cipher.actions.SystemSettingHandler
 import com.aetheria.cipher.brain.BrainRouter
 import com.aetheria.cipher.brain.GroqClient
 import com.aetheria.cipher.brain.LiteRTEngine
@@ -45,8 +48,38 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideActionExecutor(shizukuBridge: ShizukuBridge): ActionExecutor {
-        return ActionExecutor(shizukuBridge)
+    fun provideSystemSettingHandler(
+        @ApplicationContext context: Context,
+        shizukuBridge: ShizukuBridge
+    ): SystemSettingHandler {
+        return SystemSettingHandler(context, shizukuBridge)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSmsHandler(
+        @ApplicationContext context: Context,
+        shizukuBridge: ShizukuBridge
+    ): SmsHandler {
+        return SmsHandler(context, shizukuBridge)
+    }
+
+    @Provides
+    @Singleton
+    fun provideIntentHandler(
+        @ApplicationContext context: Context,
+        shizukuBridge: ShizukuBridge
+    ): IntentHandler {
+        return IntentHandler(context, shizukuBridge)
+    }
+
+    @Provides
+    @Singleton
+    fun provideActionExecutor(
+        @ApplicationContext context: Context,
+        shizukuBridge: ShizukuBridge
+    ): ActionExecutor {
+        return ActionExecutor(context, shizukuBridge)
     }
 
     @Provides

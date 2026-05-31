@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,16 +21,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.aetheria.cipher.core.CipherCoreService
+import com.aetheria.cipher.shizuku.ShizukuBridge
 import com.aetheria.cipher.ui.theme.CipherTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -37,6 +38,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
     }
+
+    @Inject lateinit var shizukuBridge: ShizukuBridge
 
     private val permissionQueue = mutableListOf(
         Manifest.permission.RECORD_AUDIO,
@@ -83,10 +86,8 @@ class MainActivity : ComponentActivity() {
             checkAndRequestPermissions()
         }
 
-        // Check Shizuku
-        if (!isShizukuRunning()) {
-            Log.w(TAG, "Shizuku is not running — shell commands will fail")
-        }
+        // Initialize Shizuku and show smoke test result
+        initializeShizuku()
 
         // Start CipherCoreService
         startCipherCoreService()
@@ -94,7 +95,6 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndRequestPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Overlay permission check
             if (!Settings.canDrawOverlays(this)) {
                 val intent = Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -114,13 +114,25 @@ class MainActivity : ComponentActivity() {
                 return
             }
         }
-        // All permissions checked
         Log.d(TAG, "All permissions checked")
     }
 
-    private fun isShizukuRunning(): Boolean {
-        // TODO: Check if Shizuku service is running
-        return false
+    private fun initializeShizuku() {
+        try {
+            shizukuBridge.initialize()
+            val available = shizukuBridge.isAvailable()
+            val message = if (available) "Shizuku: connected" else "Shizuku: not found"
+            Log.d(TAG, "Shizuku smoke test: $available")
+
+            runOnUiThread {
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Shizuku initialization failed", e)
+            runOnUiThread {
+                Toast.makeText(this, "Shizuku: error - ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun startCipherCoreService() {
@@ -131,6 +143,15 @@ class MainActivity : ComponentActivity() {
             startService(intent)
         }
         Log.d(TAG, "CipherCoreService started")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try {
+            shizukuBridge.destroy()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error destroying ShizukuBridge", e)
+        }
     }
 }
 
@@ -179,7 +200,6 @@ fun ChatScreen() {
     var isListening by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Message history
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -191,7 +211,6 @@ fun ChatScreen() {
             }
         }
 
-        // Quick action chips
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -201,7 +220,6 @@ fun ChatScreen() {
             AssistChip(onClick = {}, label = { Text("Check CI") })
         }
 
-        // Input bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
