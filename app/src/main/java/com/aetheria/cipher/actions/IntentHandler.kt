@@ -17,6 +17,7 @@ class IntentHandler(
 
     companion object {
         private const val TAG = "IntentHandler"
+        private const val PRINT_SETTINGS = "android.settings.PRINT_SETTINGS"
     }
 
     // ── Open App ────────────────────────────────────────────────────
@@ -116,7 +117,7 @@ class IntentHandler(
             return openApp(mappedPackage)
         }
 
-        ActionExecutor.ActionResult(false, "App not found: $appName", "I couldn't find an app called $appName")
+        return ActionExecutor.ActionResult(false, "App not found: $appName", "I couldn't find an app called $appName")
     }
 
     // ── Open URL ────────────────────────────────────────────────────
@@ -209,8 +210,6 @@ class IntentHandler(
             }
         }
     }
-
-    private val PRINT_SETTINGS = "android.settings.PRINT_SETTINGS"
 
     // ── Set Alarm ───────────────────────────────────────────────────
 

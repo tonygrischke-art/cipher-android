@@ -127,9 +127,13 @@ class CipherCoreService : Service() {
                         actionExecutor.execute(result.actionJson)
                     } catch (e: Exception) {
                         Log.e(TAG, "Action execution failed", e)
-                        "Sorry, couldn't complete that action."
+                        com.aetheria.cipher.actions.ActionExecutor.ActionResult(
+                            success = false,
+                            output = e.message ?: "Unknown error",
+                            spokenResponse = "Sorry, couldn't complete that action."
+                        )
                     }
-                    voicePipeline.speak(actionResult)
+                    voicePipeline.speak(actionResult.spokenResponse)
                 } else {
                     voicePipeline.speak(result.spokenResponse)
                 }

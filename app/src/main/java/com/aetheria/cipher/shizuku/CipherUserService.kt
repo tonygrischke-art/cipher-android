@@ -1,11 +1,11 @@
 package com.aetheria.cipher.shizuku
 
+import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import rikka.shizuku.ShizukuUserService
 
-class CipherUserService : ShizukuUserService() {
+class CipherUserService : Service() {
 
     companion object {
         private const val TAG = "CipherUserService"
@@ -17,8 +17,8 @@ class CipherUserService : ShizukuUserService() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        Log.d(TAG, "CipherUserService onBind")
-        return super.onBind(intent)
+        Log.d(TAG, "CipherUserService onBind — returning null (no binder API needed)")
+        return null
     }
 
     override fun onDestroy() {
