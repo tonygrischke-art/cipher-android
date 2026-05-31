@@ -87,7 +87,7 @@ class CipherCoreService : Service() {
     }
 
     private fun startSubsystems() {
-        Start WakeWordService
+        // Start WakeWordService
         val wakeIntent = Intent(this, WakeWordService::class.java)
         startService(wakeIntent)
         Log.d(TAG, "WakeWordService started")
