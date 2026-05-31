@@ -151,13 +151,13 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun checkAccessibility(context: android.content.Context) {
-        accessibilityEnabled = try {
-            val enabled = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return@try false
-            enabled.contains(context.packageName) && enabled.contains("CipherAccessibilityService")
-        } catch (e: Exception) { false }
+        val enabled = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        accessibilityEnabled = enabled != null &&
+            enabled.contains(context.packageName) &&
+            enabled.contains("CipherAccessibilityService")
     }
 
     fun onWakeWordDetected() {
