@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cipher</string>
+    <string name="accessibility_service_description">
+        Cipher uses Accessibility Service to see and interact with your apps.
+        This allows voice-controlled app navigation, screen reading, and UI interaction.
+    </string>
+    <string name="notification_listener_description">
+        Cipher intercepts notifications to read important ones aloud and act on them.
+    </string>
+</resources>
