@@ -12,6 +12,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -315,7 +316,6 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
     ) { granted ->
         // Handled by recomposition
     }
-
     val permissions = listOf(
         PermissionItem(Manifest.permission.RECORD_AUDIO, "Microphone", "For voice commands", true),
         PermissionItem(Manifest.permission.CALL_PHONE, "Phone", "To make calls by voice", false),
@@ -816,13 +816,3 @@ fun ReadyPage(viewModel: OnboardingViewModel, onComplete: () -> Unit) {
         }
     }
 }
-
-@Composable
-private fun rememberLauncherForActivityResult(
-    contract: ActivityResultContracts.RequestPermission(),
-    onResult: (Boolean) -> Unit
-): ManagedActivityResultLauncher<String, Boolean> {
-    return androidx.activity.compose.rememberLauncherForActivityResult(contract, onResult)
-}
-
-typealias ManagedActivityResultLauncher<I, O> = androidx.activity.result.ActivityResultLauncher<I>
