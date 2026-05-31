@@ -11,11 +11,10 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.aetheria.cipher.MainActivity
+import com.aetheria.cipher.ui.MainActivity
 import com.aetheria.cipher.R
 import com.aetheria.cipher.brain.BrainRouter
 import com.aetheria.cipher.context.ContextEngine
-import com.aetheria.cipher.notifications.CipherNotificationListener
 import com.aetheria.cipher.voice.VoicePipeline
 import com.aetheria.cipher.voice.WakeWordService
 import dagger.hilt.android.AndroidEntryPoint
@@ -96,14 +95,16 @@ class CipherCoreService : Service() {
     private fun handleWakeWord(intent: Intent) {
         val wakeWord = intent.getStringExtra("wake_word") ?: ""
         Log.d(TAG, "Wake word detected: $wakeWord")
-        voicePipeline.startListening()
+        voicePipeline.startListening(onTranscript = { transcript ->
+            handleTranscript(transcript)
+        })
     }
 
-    private fun handleTranscript(intent: Intent) {
-        val transcript = intent.getStringExtra("transcript") ?: return
+    private fun handleTranscript(transcript: String) {
         val context = contextEngine.getCurrentContext()
-        brainRouter.process(transcript, context) { result ->
-            voicePipeline.speak(result)
-        }
+        // TODO: bridge suspend function call properly
+        // brainRouter.process(transcript, context) { result ->
+        //     voicePipeline.speak(result)
+        // }
     }
 }

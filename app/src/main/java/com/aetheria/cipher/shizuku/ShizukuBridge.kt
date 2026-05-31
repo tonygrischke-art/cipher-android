@@ -34,7 +34,7 @@ class ShizukuBridge {
 
     fun isAvailable(): Boolean = isShizukuAvailable && isShizukuPermissionGranted
 
-    fun executeCommand(command: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): String {
+    suspend fun executeCommand(command: String, timeoutMs: Long = DEFAULT_TIMEOUT_MS): String {
         if (!isAvailable()) {
             return "Shizuku is not available. Please start Shizuku and grant permission."
         }

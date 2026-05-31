@@ -29,11 +29,11 @@ class FloatingOrbService : Service() {
         createOrb()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Intent? {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.getStringExtra("state")?.let { state ->
             try { setOrbState(OrbState.valueOf(state)) } catch (_: Exception) {}
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -130,7 +130,7 @@ class FloatingOrbService : Service() {
 
     private fun onOrbTap() {
         Log.d(TAG, "Orb tapped — expanding chat UI")
-        val intent = Intent(this, com.aetheria.cipher.MainActivity::class.java).apply {
+        val intent = Intent(this, com.aetheria.cipher.ui.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("show_chat", true)
         }
