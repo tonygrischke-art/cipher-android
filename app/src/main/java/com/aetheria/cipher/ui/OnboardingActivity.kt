@@ -155,7 +155,7 @@ class OnboardingViewModel @Inject constructor(
             val enabled = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
+            ) ?: return@try false
             enabled.contains(context.packageName) && enabled.contains("CipherAccessibilityService")
         } catch (e: Exception) { false }
     }
@@ -370,7 +370,7 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Add,
+                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Check,
                         contentDescription = null,
                         tint = if (granted) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant
@@ -419,7 +419,7 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Layers, contentDescription = null)
+                Icon(Icons.Default.Check, contentDescription = null)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "Display Over Other Apps", fontWeight = FontWeight.Medium)
@@ -484,7 +484,7 @@ fun AccessibilityPage(viewModel: OnboardingViewModel) {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.Accessibility,
+            imageVector = Icons.Default.Check,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.primary
@@ -538,6 +538,8 @@ fun AccessibilityPage(viewModel: OnboardingViewModel) {
 
 @Composable
 fun ShizukuPage(viewModel: OnboardingViewModel) {
+    val context = LocalContext.current
+
     LaunchedEffect(Unit) {
         viewModel.checkShizuku()
     }
@@ -565,7 +567,7 @@ fun ShizukuPage(viewModel: OnboardingViewModel) {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.Terminal,
+            imageVector = Icons.Default.Check,
             contentDescription = null,
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.primary
@@ -647,7 +649,7 @@ fun WakeWordPage(viewModel: OnboardingViewModel) {
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.Default.Mic,
+                Icons.Default.Check,
                 contentDescription = null,
                 modifier = Modifier.size(40.dp),
                 tint = Color.White
