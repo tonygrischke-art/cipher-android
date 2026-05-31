@@ -36,7 +36,8 @@ class WakeWordService : Service() {
         private const val KEY_ACCESS_KEY = "porcupine_access_key"
 
         /** Porcupine built-in keyword to use. */
-        private const val KEYWORD = Porcupine.BuiltInKeyword.JARVIS
+        @JvmField
+        val KEYWORD: Porcupine.BuiltInKeyword = Porcupine.BuiltInKeyword.JARVIS
     }
 
     private var porcupine: Porcupine? = null

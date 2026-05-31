@@ -14,7 +14,6 @@ import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
 import com.aetheria.cipher.voice.VoicePipeline
-import com.aetheria.cipher.MainActivity
 import kotlin.math.abs
 
 class FloatingOrbService : Service() {
@@ -159,7 +158,7 @@ class FloatingOrbService : Service() {
 
     private fun onOrbTap() {
         Log.d(TAG, "Orb tapped — expanding chat UI")
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val intent = Intent(this, com.aetheria.cipher.ui.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("show_chat", true)
         }
