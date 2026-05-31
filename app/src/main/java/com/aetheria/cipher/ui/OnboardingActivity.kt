@@ -148,7 +148,7 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun updatePermission(permission: String, granted: Boolean) {
-        permissionsGranted[permission] = granted
+        permissionsGranted.put(permission, granted)
     }
 
     fun checkAccessibility(context: android.content.Context) {
@@ -371,7 +371,7 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.PanoramaFishEye,
                         contentDescription = null,
                         tint = if (granted) MaterialTheme.colorScheme.primary
                                else MaterialTheme.colorScheme.onSurfaceVariant

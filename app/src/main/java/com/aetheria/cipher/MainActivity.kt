@@ -157,11 +157,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CipherApp(showChat: Boolean = false) {
-    if (showChat) {
-        ChatScreen()
-    } else {
-        WelcomeScreen()
-    }
+    WelcomeScreen()
 }
 
 @Composable
