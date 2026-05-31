@@ -75,10 +75,7 @@ class CipherSettingsViewModel @Inject constructor(
 
     // Version info
     val appVersion = "0.1.0"
-    val buildCommit = try {
-        com.aetheria.cipher.BuildConfig::class.java
-        "unknown"
-    } catch (e: Exception) { "dev" }
+    val buildCommit = "dev"
 
     init {
         loadPreferences()
@@ -113,7 +110,7 @@ class CipherSettingsViewModel @Inject constructor(
 
     fun exportConversationHistory(): File? {
         return try {
-            val conversations = memoryStore.getRecentExceptions(1000)
+            val conversations = memoryStore.getRecentExchanges(1000)
             val jsonArray = JSONArray()
             conversations.forEach { entity ->
                 val obj = JSONObject().apply {

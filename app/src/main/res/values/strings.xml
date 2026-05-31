@@ -22,5 +22,5 @@
     <string name="onboarding_api_keys_title">API Keys</string>
     <string name="onboarding_api_keys_desc">Optional — for cloud fallback and custom wake words</string>
     <string name="onboarding_ready_title">Cipher is ready.</string>
-    <string name="onboarding_ready_desc">Voice commands • App control • Screen reading • SMS & calls • System settings • Shell access</string>
+    <string name="onboarding_ready_desc">Voice commands • App control • Screen reading • SMS &amp; calls • System settings • Shell access</string>
 </resources>

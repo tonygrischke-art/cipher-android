@@ -1,5 +1,7 @@
 package com.aetheria.cipher.ui
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -67,7 +69,8 @@ class CipherChatActivity : ComponentActivity() {
 
 @HiltViewModel
 class CipherChatViewModel @Inject constructor(
-    private val memoryStore: MemoryStore
+    private val memoryStore: MemoryStore,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -111,12 +114,11 @@ class CipherChatViewModel @Inject constructor(
         // Process via CipherCoreService
         _isThinking.value = true
         try {
-            val intent = Intent().apply {
+            val intent = Intent(appContext, CipherCoreService::class.java).apply {
                 action = CipherCoreService.ACTION_PROCESS_TRANSCRIPT
                 putExtra("transcript", text)
-                setPackage("com.aetheria.cipher")
             }
-            // Send to service
+            appContext.startService(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send message", e)
             _isThinking.value = false
