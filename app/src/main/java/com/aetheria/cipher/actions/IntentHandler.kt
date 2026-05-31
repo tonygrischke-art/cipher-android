@@ -263,7 +263,7 @@ class IntentHandler(
             }
             context.startActivity(intent)
             val displayTime = if (seconds >= 60) {
-                "${seconds / 60} minute${if (seconds / 60 != 1) "s" ""}"
+                "${seconds / 60} minute${if (seconds / 60 != 1) "s" else ""}"
             } else {
                 "$seconds seconds"
             }
