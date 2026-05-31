@@ -40,7 +40,7 @@ class ActionExecutor(
         }
     }
 
-    private fun handleShellCommand(params: org.json.JSONObject): String {
+    private suspend fun handleShellCommand(params: org.json.JSONObject): String {
         val command = params.optString("command", "")
         if (command.isBlank()) return "No command specified."
         return shizukuBridge.executeCommand(command)

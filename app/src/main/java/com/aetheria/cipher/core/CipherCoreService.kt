@@ -45,7 +45,10 @@ class CipherCoreService : Service() {
         Log.d(TAG, "onStartCommand: ${intent?.action}")
         when (intent?.action) {
             "ACTION_WAKE_WORD_DETECTED" -> handleWakeWord(intent)
-            "ACTION_PROCESS_TRANSCRIPT" -> handleTranscript(intent)
+            "ACTION_PROCESS_TRANSCRIPT" -> {
+                val transcript = intent.getStringExtra("transcript") ?: ""
+                if (transcript.isNotBlank()) handleTranscript(transcript)
+            }
         }
         return START_STICKY
     }
