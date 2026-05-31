@@ -5,16 +5,21 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aetheria.cipher.R
+import com.aetheria.cipher.actions.ActionExecutor
 import com.aetheria.cipher.brain.BrainRouter
-import com.aetheria.cipher.brain.LiteRTEngine
 import com.aetheria.cipher.context.ContextEngine
+import com.aetheria.cipher.context.MemoryStore
+import com.aetheria.cipher.notifications.CipherNotificationListener
 import com.aetheria.cipher.ui.MainActivity
 import com.aetheria.cipher.voice.VoicePipeline
 import com.aetheria.cipher.voice.WakeWordService
@@ -36,13 +41,15 @@ class CipherCoreService : Service() {
 
         const val ACTION_WAKE_WORD_DETECTED = "ACTION_WAKE_WORD_DETECTED"
         const val ACTION_PROCESS_TRANSCRIPT = "ACTION_PROCESS_TRANSCRIPT"
+        const val ACTION_NOTIFICATION_RECEIVED = "com.aetheria.cipher.NOTIFICATION_RECEIVED"
+        const val ACTION_FOREGROUND_APP_CHANGED = "com.aetheria.cipher.FOREGROUND_APP_CHANGED"
     }
 
     @Inject lateinit var brainRouter: BrainRouter
     @Inject lateinit var contextEngine: ContextEngine
     @Inject lateinit var voicePipeline: VoicePipeline
-    @Inject lateinit var liteRTEngine: LiteRTEngine
-    @Inject lateinit var actionExecutor: com.aetheria.cipher.actions.ActionExecutor
+    @Inject lateinit var actionExecutor: ActionExecutor
+    @Inject lateinit var memoryStore: MemoryStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -52,6 +59,8 @@ class CipherCoreService : Service() {
         createNotificationChannel()
         startForeground()
         initializeSubsystems()
+        registerNotificationReceiver()
+        registerAppChangeReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -62,6 +71,8 @@ class CipherCoreService : Service() {
                 val transcript = intent.getStringExtra("transcript") ?: ""
                 if (transcript.isNotBlank()) handleTranscript(transcript)
             }
+            ACTION_NOTIFICATION_RECEIVED -> handleNotification(intent)
+            ACTION_FOREGROUND_APP_CHANGED -> handleAppChange(intent)
         }
         return START_STICKY
     }
@@ -69,7 +80,6 @@ class CipherCoreService : Service() {
     override fun onDestroy() {
         Log.d(TAG, "CipherCoreService destroying")
         voicePipeline.destroy()
-        liteRTEngine.release()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -82,7 +92,6 @@ class CipherCoreService : Service() {
         Log.d(TAG, "Initializing subsystems")
         voicePipeline.initialize()
 
-        // Start WakeWordService
         try {
             val wakeIntent = Intent(this, WakeWordService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -93,6 +102,61 @@ class CipherCoreService : Service() {
             Log.d(TAG, "WakeWordService started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start WakeWordService", e)
+        }
+    }
+
+    private fun registerNotificationReceiver() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                notificationReceiver,
+                IntentFilter(ACTION_NOTIFICATION_RECEIVED),
+                RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
+            registerReceiver(
+                notificationReceiver,
+                IntentFilter(ACTION_NOTIFICATION_RECEIVED)
+            )
+        }
+    }
+
+    private fun registerAppChangeReceiver() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(
+                appChangeReceiver,
+                IntentFilter(ACTION_FOREGROUND_APP_CHANGED),
+                RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
+            registerReceiver(
+                appChangeReceiver,
+                IntentFilter(ACTION_FOREGROUND_APP_CHANGED)
+            )
+        }
+    }
+
+    // ── Receivers ───────────────────────────────────────────────────
+
+    private val notificationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            val title = intent?.getStringExtra("title") ?: ""
+            val text = intent?.getStringExtra("text") ?: ""
+            val packageName = intent?.getStringExtra("package_name") ?: ""
+            Log.d(TAG, "Notification received: [$packageName] $title: $text")
+            // Update context engine
+            if (title.isNotBlank() || text.isNotBlank()) {
+                contextEngine.lastNotification = "$title: $text".take(100)
+            }
+        }
+    }
+
+    private val appChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            val packageName = intent?.getStringExtra("package_name") ?: return
+            Log.d(TAG, "App changed: $packageName")
+            contextEngine.foregroundAppPackage = packageName
         }
     }
 
@@ -112,31 +176,64 @@ class CipherCoreService : Service() {
         )
     }
 
+    private fun handleNotification(intent: Intent) {
+        val title = intent.getStringExtra("title") ?: ""
+        val text = intent.getStringExtra("text") ?: ""
+        if (title.isNotBlank() || text.isNotBlank()) {
+            contextEngine.lastNotification = "$title: $text".take(100)
+        }
+    }
+
+    private fun handleAppChange(intent: Intent) {
+        val packageName = intent.getStringExtra("package_name") ?: return
+        contextEngine.foregroundAppPackage = packageName
+    }
+
     private fun handleTranscript(transcript: String) {
         Log.d(TAG, "Processing transcript: \"$transcript\"")
         voicePipeline.setThinking()
 
         serviceScope.launch {
             try {
-                val context = contextEngine.getCurrentContext()
-                val result = brainRouter.route(transcript, context)
+                // Get context snapshot
+                val contextSnapshot = try {
+                    contextEngine.getSnapshot()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Context snapshot failed, using cached", e)
+                    null
+                }
+                val contextStr = contextSnapshot?.let {
+                    contextEngine.formatForPrompt(it)
+                } ?: contextEngine.getCurrentContext()
+
+                val result = brainRouter.route(transcript, contextStr)
 
                 // Execute action if present
-                if (result.actionJson != null) {
+                val responseText = if (result.actionJson != null) {
                     val actionResult = try {
                         actionExecutor.execute(result.actionJson)
                     } catch (e: Exception) {
                         Log.e(TAG, "Action execution failed", e)
-                        com.aetheria.cipher.actions.ActionExecutor.ActionResult(
+                        ActionExecutor.ActionResult(
                             success = false,
                             output = e.message ?: "Unknown error",
                             spokenResponse = "Sorry, couldn't complete that action."
                         )
                     }
-                    voicePipeline.speak(actionResult.spokenResponse)
+                    actionResult.spokenResponse
                 } else {
-                    voicePipeline.speak(result.spokenResponse)
+                    result.spokenResponse
                 }
+
+                // Save to memory
+                try {
+                    val sessionId = "default"
+                    memoryStore.saveExchange(sessionId, transcript, responseText, result.actionJson)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to save to memory", e)
+                }
+
+                voicePipeline.speak(responseText)
 
             } catch (e: Exception) {
                 Log.e(TAG, "BrainRouter processing failed", e)

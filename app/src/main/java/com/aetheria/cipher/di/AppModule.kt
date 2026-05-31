@@ -9,6 +9,8 @@ import com.aetheria.cipher.brain.BrainRouter
 import com.aetheria.cipher.brain.GroqClient
 import com.aetheria.cipher.brain.LiteRTEngine
 import com.aetheria.cipher.context.ContextEngine
+import com.aetheria.cipher.context.MemoryStore
+import com.aetheria.cipher.context.RoutineEngine
 import com.aetheria.cipher.shizuku.ShizukuBridge
 import com.aetheria.cipher.voice.VoicePipeline
 import dagger.Module
@@ -80,6 +82,23 @@ object AppModule {
         shizukuBridge: ShizukuBridge
     ): ActionExecutor {
         return ActionExecutor(context, shizukuBridge)
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryStore(@ApplicationContext context: Context): MemoryStore {
+        return MemoryStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRoutineEngine(
+        @ApplicationContext context: Context,
+        memoryStore: MemoryStore,
+        actionExecutor: ActionExecutor,
+        shizukuBridge: ShizukuBridge
+    ): RoutineEngine {
+        return RoutineEngine(context, memoryStore, actionExecutor, shizukuBridge)
     }
 
     @Provides
