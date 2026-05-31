@@ -1,6 +1,7 @@
 package com.aetheria.cipher.di
 
 import android.content.Context
+import com.aetheria.cipher.actions.ActionExecutor
 import com.aetheria.cipher.brain.BrainRouter
 import com.aetheria.cipher.brain.GroqClient
 import com.aetheria.cipher.brain.LiteRTEngine
@@ -44,11 +45,18 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideActionExecutor(shizukuBridge: ShizukuBridge): ActionExecutor {
+        return ActionExecutor(shizukuBridge)
+    }
+
+    @Provides
+    @Singleton
     fun provideBrainRouter(
         liteRTEngine: LiteRTEngine,
-        groqClient: GroqClient
+        groqClient: GroqClient,
+        actionExecutor: ActionExecutor
     ): BrainRouter {
-        return BrainRouter(liteRTEngine, groqClient)
+        return BrainRouter(liteRTEngine, groqClient, actionExecutor)
     }
 
     @Provides

@@ -1,88 +1,118 @@
 package com.aetheria.cipher.brain
 
 import android.util.Log
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
-class LiteRTEngine {
+/**
+ * On-device inference engine using MediaPipe LiteRT LLM Inference API.
+ *
+ * Two model slots:
+ *   - ACTION    → mobile_actions_q8_ekv1024.litertlm  (functiongemma-270m, device actions)
+ *   - REASONING → gemma-3n-E2B-it-int4.litertlm      (gemma-3n, general reasoning)
+ */
+class LiteRTEngine(
+    private val modelDir: String = "/data/local/tmp/cipher_models/"
+) {
 
     companion object {
         private const val TAG = "LiteRTEngine"
-        private const val MODEL_DIR = "/data/local/tmp/cipher_models/"
+        private const val ACTION_MODEL = "mobile_actions_q8_ekv1024.litertlm"
+        private const val REASONING_MODEL = "gemma-3n-E2B-it-int4.litertlm"
+        private const val MAX_TOKENS = 1024
+        private const val TOP_K = 40
+        private const val TEMPERATURE = 0.7f
+        private const val RANDOM_SEED = 101
+        private const val INFERENCE_TIMEOUT_MS = 15_000L
     }
 
-    private val modelPaths = mapOf(
-        "action" to File(MODEL_DIR, "mobile_actions_q8_ekv1024.litertlm"),
-        "reasoning" to File(MODEL_DIR, "gemma-3n-E2B-it-int4.litertlm")
-    )
+    enum class ModelSlot(val fileName: String) {
+        ACTION(ACTION_MODEL),
+        REASONING(REASONING_MODEL)
+    }
 
-    private var isInitialized = false
-    private var mediaPipeLLM: Any? = null // MediaPipe LLM Inference session placeholder
+    private val sessions = mutableMapOf<ModelSlot, LlmInference>()
 
-    fun initialize(): Result<Unit> {
-        Log.d(TAG, "Initializing LiteRTEngine")
+    private fun modelFile(slot: ModelSlot): File = File(modelDir, slot.fileName)
 
-        for ((slot, file) in modelPaths) {
-            if (!file.exists()) {
-                Log.e(TAG, "Model not found for slot '$slot': ${file.absolutePath}")
-                return Result.failure(ModelNotFoundException(slot, file.absolutePath))
+    fun isModelAvailable(slot: ModelSlot): Boolean = modelFile(slot).exists()
+
+    fun getAvailableModels(): List<ModelSlot> =
+        ModelSlot.entries.filter { isModelAvailable(it) }
+
+    @Synchronized
+    private fun getOrCreateSession(slot: ModelSlot): LlmInference {
+        sessions[slot]?.let { return it }
+        val file = modelFile(slot)
+        if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
+        Log.d(TAG, "Creating LlmInference for ${slot.name}: ${file.length() / 1024 / 1024} MB")
+        val options = LlmInference.LlmInferenceOptions.builder()
+            .setModelPath(file.absolutePath)
+            .setMaxTokens(MAX_TOKENS)
+            .setTopK(TOP_K)
+            .setTemperature(TEMPERATURE)
+            .setRandomSeed(RANDOM_SEED)
+            .build()
+        val session = LlmInference.createFromOptions(options)
+        sessions[slot] = session
+        Log.d(TAG, "Session ready for ${slot.name}")
+        return session
+    }
+
+    /**
+     * Blocking full-response inference.
+     * Throws [InferenceTimeoutException] if model doesn't respond within timeout.
+     * Throws [ModelNotFoundException] if model file is missing.
+     */
+    suspend fun generate(prompt: String, slot: ModelSlot): String =
+        withContext(Dispatchers.IO) {
+            val result = withTimeoutOrNull(INFERENCE_TIMEOUT_MS) {
+                try {
+                    val session = getOrCreateSession(slot)
+                    session.generateResponse(prompt)
+                } catch (e: Exception) {
+                    Log.e(TAG, "generate failed for ${slot.name}", e)
+                    throw e
+                }
             }
-            Log.d(TAG, "Model found for slot '$slot': ${file.length()} bytes")
+            if (result == null) throw InferenceTimeoutException(slot.name, INFERENCE_TIMEOUT_MS)
+            result
         }
 
+    /**
+     * Streaming inference — yields the full response as a single emission.
+     * Returns an error string if model is missing or times out.
+     */
+    fun generateStreaming(prompt: String, slot: ModelSlot): Flow<String> = flow {
         try {
-            // TODO: Initialize MediaPipe LLM Inference API
-            // val options = LLMInferenceOptions.builder()
-            //     .setModelPath(actionModelPath)
-            //     .setMaxTokens(1024)
-            //     .build()
-            // mediaPipeLLM = LLMInference.createFromOptions(context, options)
-            isInitialized = true
-            Log.d(TAG, "LiteRTEngine initialized successfully")
-            return Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize MediaPipe LLM", e)
-            return Result.failure(e)
+            emit(generate(prompt, slot))
+        } catch (e: ModelNotFoundException) {
+            Log.e(TAG, "Model not found: ${e.slot}")
+            emit("[model not found: ${e.slot}]")
+        } catch (e: InferenceTimeoutException) {
+            Log.e(TAG, "Inference timeout: ${e.slot}")
+            emit("[inference timed out]")
         }
-    }
+    }.flowOn(Dispatchers.IO)
 
-    fun infer(prompt: String, modelSlot: String = "reasoning", streaming: Boolean = false): Result<String> {
-        if (!isInitialized) {
-            val initResult = initialize()
-            if (initResult.isFailure) return Result.failure(initResult.exceptionOrNull()!!)
+    @Synchronized
+    fun release() {
+        Log.d(TAG, "Releasing all LiteRT sessions")
+        for ((slot, session) in sessions) {
+            try { session.close() } catch (e: Exception) { Log.w(TAG, "Error closing ${slot.name}", e) }
         }
-
-        val modelFile = modelPaths[modelSlot]
-        if (modelFile == null || !modelFile.exists()) {
-            return Result.failure(ModelNotFoundException(modelSlot, modelFile?.absolutePath ?: "unknown"))
-        }
-
-        return try {
-            // TODO: Call MediaPipe LLM Inference
-            // val response = mediaPipeLLM?.generateResponse(prompt)
-            Log.d(TAG, "LiteRT infer called with slot=$modelSlot, prompt length=${prompt.length}")
-            Result.success(onDeviceInferenceStub(prompt, modelSlot))
-        } catch (e: Exception) {
-            Log.e(TAG, "Inference failed for slot $modelSlot", e)
-            Result.failure(e)
-        }
-    }
-
-    private fun onDeviceInferenceStub(prompt: String, modelSlot: String): String {
-        return when (modelSlot) {
-            "action" -> """{"type": "SHELL_COMMAND", "params": {"command": "echo 'Cipher action stub'"}}"""
-            "reasoning" -> "This is a stub response from the on-device reasoning model."
-            else -> "Stub response."
-        }
-    }
-
-    fun isAvailable(): Boolean {
-        return modelPaths.values.all { it.exists() }
-    }
-
-    fun getAvailableModels(): List<String> {
-        return modelPaths.filter { it.value.exists() }.keys.toList()
+        sessions.clear()
     }
 
     data class ModelNotFoundException(val slot: String, val path: String) :
         Exception("Model not found for slot '$slot' at path: $path")
+
+    data class InferenceTimeoutException(val slot: String, val timeoutMs: Long) :
+        Exception("Inference timed out for slot '$slot' after ${timeoutMs}ms")
 }

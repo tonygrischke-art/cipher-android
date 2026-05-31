@@ -1,7 +1,10 @@
 package com.aetheria.cipher.ui
 
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
@@ -10,6 +13,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.FrameLayout
+import com.aetheria.cipher.voice.VoicePipeline
 import kotlin.math.abs
 
 class FloatingOrbService : Service() {
@@ -20,6 +24,7 @@ class FloatingOrbService : Service() {
 
     private var windowManager: WindowManager? = null
     private var orbView: FrameLayout? = null
+    private var stateReceiver: BroadcastReceiver? = null
 
     enum class OrbState { IDLE, LISTENING, THINKING, SPEAKING }
 
@@ -27,6 +32,7 @@ class FloatingOrbService : Service() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createOrb()
+        registerStateReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -37,6 +43,7 @@ class FloatingOrbService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterStateReceiver()
         destroyOrb()
         super.onDestroy()
     }
@@ -50,6 +57,30 @@ class FloatingOrbService : Service() {
         // LISTENING -> wave animation
         // THINKING -> spinner
         // SPEAKING -> glow
+    }
+
+    private fun registerStateReceiver() {
+        stateReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val state = intent?.getStringExtra(VoicePipeline.EXTRA_STATE) ?: return
+                try { setOrbState(OrbState.valueOf(state)) } catch (_: Exception) {}
+            }
+        }
+        val filter = IntentFilter(VoicePipeline.ACTION_STATE_CHANGE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(stateReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
+            registerReceiver(stateReceiver, filter)
+        }
+        Log.d(TAG, "State receiver registered")
+    }
+
+    private fun unregisterStateReceiver() {
+        stateReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+            stateReceiver = null
+        }
     }
 
     private fun createOrb() {
@@ -100,10 +131,7 @@ class FloatingOrbService : Service() {
                             return true
                         }
                         MotionEvent.ACTION_UP -> {
-                            if (!isDragging) {
-                                // Tap detected — expand to full chat UI
-                                onOrbTap()
-                            }
+                            if (!isDragging) onOrbTap()
                             return true
                         }
                     }
@@ -130,7 +158,7 @@ class FloatingOrbService : Service() {
 
     private fun onOrbTap() {
         Log.d(TAG, "Orb tapped — expanding chat UI")
-        val intent = Intent(this, com.aetheria.cipher.ui.MainActivity::class.java).apply {
+        val intent = Intent(this, com.aetheria.cipher.MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("show_chat", true)
         }

@@ -2,134 +2,232 @@ package com.aetheria.cipher.brain
 
 import android.util.Log
 import com.aetheria.cipher.actions.ActionExecutor
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 
-class BrainRouter @JvmOverloads constructor(
-    private val liteRTEngine: LiteRTEngine = LiteRTEngine(),
-    private val groqClient: GroqClient = GroqClient(),
-    private val actionExecutor: ActionExecutor = ActionExecutor()
+/**
+ * Routes user transcripts to the appropriate brain (on-device or cloud),
+ * classifies intent, formats prompts, parses responses, and returns structured results.
+ *
+ * Routing:
+ *   DEVICE_ACTION → LiteRT ACTION_MODEL → Groq llama-3.3-70b fallback
+ *   REASONING     → LiteRT REASONING_MODEL → Groq llama-3.3-70b fallback
+ *   CONVERSATION  → LiteRT REASONING_MODEL → Groq llama-3.3-70b fallback
+ *
+ * Returns [BrainResult] with optional action JSON and spoken response text.
+ */
+class BrainRouter(
+    private val liteRTEngine: LiteRTEngine,
+    private val groqClient: GroqClient,
+    private val actionExecutor: ActionExecutor
 ) {
-
     companion object {
         private const val TAG = "BrainRouter"
+        private const val GROQ_MODEL = "llama-3.3-70b-versatile"
+        private const val GROQ_TIMEOUT_MS = 15_000L
+
+        val DEVICE_ACTION_KEYWORDS = listOf(
+            "turn on", "turn off", "toggle",
+            "open", "close", "launch", "start", "kill",
+            "call", "text", "message", "dial", "send", "reply",
+            "set", "change", "adjust",
+            "volume", "brightness", "wifi", "wi-fi", "bluetooth",
+            "airplane", "flashlight", "torch",
+            "alarm", "timer", "screenshot",
+            "enable", "disable", "switch"
+        )
+
+        val REASONING_KEYWORDS = listOf(
+            "summarize", "explain", "what is", "what's", "how do", "how does",
+            "analyze", "compare", "difference", "debug", "fix", "check",
+            "read", "tell me", "what's happening", "why", "calculate",
+            "review", "describe", "define", "translate"
+        )
+
+        const val CIPHER_SYSTEM_PROMPT = "You are Cipher, an autonomous AI agent running on an Android device. " +
+            "You have access to shell commands via Shizuku, can interact with any app via Accessibility Service, " +
+            "and can read/send messages. Be concise. When executing actions respond with JSON action blocks."
     }
 
-    enum class IntentType {
-        DEVICE_ACTION,
-        REASONING,
-        CONVERSATION
-    }
+    enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION }
 
-    data class ActionRequest(
-        val type: String,
-        val params: Map<String, Any> = emptyMap()
+    data class BrainResult(
+        val actionJson: String? = null,
+        val spokenResponse: String
     )
 
-    suspend fun process(transcript: String, context: String, onResult: (String) -> Unit) {
-        Log.d(TAG, "Processing: \"$transcript\"")
+    suspend fun route(transcript: String, context: String): BrainResult {
+        Log.d(TAG, "Routing: \"$transcript\"")
+        val intent = classifyIntent(transcript)
+        Log.d(TAG, "Intent classified as: $intent")
 
-        val intentType = classifyIntent(transcript)
-        Log.d(TAG, "Intent: $intentType")
+        return when (intent) {
+            Intent.DEVICE_ACTION -> handleDeviceAction(transcript, context)
+            Intent.REASONING -> handleReasoning(transcript, context)
+            Intent.CONVERSATION -> handleConversation(transcript, context)
+        }
+    }
 
-        val response = when (intentType) {
-            IntentType.DEVICE_ACTION -> handleDeviceAction(transcript, context)
-            IntentType.REASONING -> handleReasoning(transcript, context)
-            IntentType.CONVERSATION -> handleConversation(transcript, context)
+    fun classifyIntent(transcript: String): Intent {
+        val lower = transcript.lowercase().trim()
+        if (DEVICE_ACTION_KEYWORDS.any { lower.contains(it) }) return Intent.DEVICE_ACTION
+        if (REASONING_KEYWORDS.any { lower.contains(it) }) return Intent.REASONING
+        return Intent.CONVERSATION
+    }
+
+    private suspend fun handleDeviceAction(transcript: String, context: String): BrainResult {
+        val prompt = buildActionPrompt(transcript, context)
+
+        // Tier 1: On-device action model
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.ACTION)) {
+            try {
+                val raw = withTimeoutOrNull(10_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.ACTION)
+                }
+                if (raw != null) {
+                    val json = extractActionJson(raw)
+                    val spoken = extractSpokenResponse(raw)
+                    return BrainResult(actionJson = json, spokenResponse = spoken)
+                }
+                Log.w(TAG, "Action model timed out, falling back to Groq")
+            } catch (e: LiteRTEngine.ModelNotFoundException) {
+                Log.w(TAG, "Action model not found: ${e.slot}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Action model failed: ${e.message}")
+            }
         }
 
-        onResult(response)
-    }
-
-    private fun classifyIntent(transcript: String): IntentType {
-        val lower = transcript.lowercase()
-        val actionKeywords = listOf(
-            "open", "close", "launch", "turn on", "turn off", "toggle",
-            "call", "text", "message", "dial", "send", "reply",
-            "set", "change", "adjust", "volume", "brightness",
-            "screenshot", "scroll", "tap", "click"
-        )
-        if (actionKeywords.any { lower.contains(it) }) return IntentType.DEVICE_ACTION
-
-        val reasoningKeywords = listOf(
-            "why", "how", "explain", "what is", "summarize",
-            "analyze", "compare", "difference between", "calculate"
-        )
-        if (reasoningKeywords.any { lower.contains(it) }) return IntentType.REASONING
-
-        return IntentType.CONVERSATION
-    }
-
-    private suspend fun handleDeviceAction(transcript: String, context: String): String {
-        val prompt = buildDeviceActionPrompt(transcript, context)
-
-        // Tier 1: functiongemma-270m on-device
-        val result = liteRTEngine.infer(prompt, modelSlot = "action")
-        if (result.isSuccess) {
-            val actionJson = result.getOrNull() ?: return "Sorry, couldn't parse that."
-            return actionExecutor.execute(actionJson)
+        // Tier 2: Groq fallback
+        val groqResponse = try {
+            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
+                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq fallback failed", e)
+            null
         }
 
-        // Tier 3: Groq fallback
-        Log.d(TAG, "Device action on-device failed, falling back to Groq")
-        return groqClient.complete(prompt, model = "qwen3-32b")
+        if (groqResponse != null) {
+            val json = extractActionJson(groqResponse)
+            val spoken = extractSpokenResponse(groqResponse)
+            return BrainResult(actionJson = json, spokenResponse = spoken)
+        }
+
+        return BrainResult(spokenResponse = "Sorry, I couldn't process that right now.")
     }
 
-    private suspend fun handleReasoning(transcript: String, context: String): String {
+    private suspend fun handleReasoning(transcript: String, context: String): BrainResult {
         val prompt = buildReasoningPrompt(transcript, context)
 
-        // Tier 2: Qwen3.5-2B on-device
-        val result = liteRTEngine.infer(prompt, modelSlot = "reasoning")
-        if (result.isSuccess) return result.getOrNull() ?: "I'm not sure about that."
+        // Tier 1 : On-device reasoning model
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
+            try {
+                val raw = withTimeoutOrNull(10_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
+                }
+                if (raw != null) {
+                    return BrainResult(spokenResponse = raw.trim())
+                }
+                Log.w(TAG, "Reasoning model timed out, falling back to Groq")
+            } catch (e: LiteRTEngine.ModelNotFoundException) {
+                Log.w(TAG, "Reasoning model not found: ${e.slot}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Reasoning model failed: ${e.message}")
+            }
+        }
 
-        // Tier 3: Groq fallback
-        Log.d(TAG, "Reasoning on-device failed, falling back to Groq")
-        return groqClient.complete(prompt, model = "kimi-k2")
+        // Tier 2: Groq fallback
+        val groqResponse = try {
+            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
+                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq fallback failed", e)
+            null
+        }
+
+        return BrainResult(
+            spokenResponse = groqResponse?.trim() ?: "Sorry, I'm having trouble thinking right now."
+        )
     }
 
-    private suspend fun handleConversation(transcript: String, context: String): String {
+    private suspend fun handleConversation(transcript: String, context: String): BrainResult {
         val prompt = buildConversationPrompt(transcript, context)
 
-        // Tier 2: Qwen3.5-2B on-device
-        val result = liteRTEngine.infer(prompt, modelSlot = "reasoning")
-        if (result.isSuccess) return result.getOrNull() ?: "Tell me more."
+        // Try on-device first
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
+            try {
+                val raw = withTimeoutOrNull(10_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
+                }
+                if (raw != null) {
+                    return BrainResult(spokenResponse = raw.trim())
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "On-device conversation failed: ${e.message}")
+            }
+        }
 
-        // Tier 3: Groq fallback
-        Log.d(TAG, "Conversation on-device failed, falling back to Groq")
-        return groqClient.complete(prompt, model = "kimi-k2")
+        // Groq fallback
+        val groqResponse = try {
+            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
+                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq fallback failed", e)
+            null
+        }
+
+        return BrainResult(
+            spokenResponse = groqResponse?.trim() ?: "Tell me more."
+        )
     }
 
-    private fun buildDeviceActionPrompt(transcript: String, context: String): String {
-        return """You are a device action classifier. Given the user's request, output a JSON action object.
+    // ── Prompt formatters ──────────────────────────────────────────
 
-Context: $context
-User: $transcript
+    private fun buildActionPrompt(transcript: String, context: String): String =
+        "You are a phone control AI. User says: $transcript. " +
+            "Context: $context. " +
+            "Respond with JSON: {action_type, parameters, spoken_response}"
 
-Respond with JSON only, no other text.
-Format: {"type": "ACTION_TYPE", "params": {"key": "value"}}
+    private fun buildReasoningPrompt(transcript: String, context: String): String =
+        "You are Cipher, an AI assistant. Context: $context. User: $transcript"
 
-Available types:
-- SHELL_COMMAND: {"command": "..."}
-- OPEN_APP: {"package": "..."}
-- SEND_SMS: {"to": "...", "message": "..."}
-- MAKE_CALL: {"number": "..."}
-- SYSTEM_SETTING: {"setting": "...", "value": "..."}
-- ACCESSIBILITY_ACTION: {"action": "tap|type|scroll", "target": "..."}
-- WEB_SEARCH: {"query": "..."}"""
+    private fun buildConversationPrompt(transcript: String, context: String): String =
+        "You are Cipher, an AI assistant. Context: $context. User: $transcript"
+
+    // ── Response parsing ───────────────────────────────────────────
+
+    /**
+     * Extract a JSON action block from raw model output.
+     * Looks for { ... } containing "action_type".
+     */
+    private fun extractActionJson(raw: String): String? {
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start == -1 || end == -1 || end <= start) return null
+        val block = raw.substring(start, end + 1)
+        return try {
+            val json = JSONObject(block)
+            if (json.has("action_type") || json.has("type")) block else null
+        } catch (e: Exception) {
+            null
+        }
     }
 
-    private fun buildReasoningPrompt(transcript: String, context: String): String {
-        return """Context: $context
-User: $transcript
-
-Respond helpfully and concisely."""
-    }
-
-    private fun buildConversationPrompt(transcript: String, context: String): String {
-        return """You are Cipher, a helpful AI assistant. Respond naturally and concisely.
-
-Context: $context
-User: $transcript
-
-Cipher:"""
+    /**
+     * Extract spoken_response from JSON, or return the full text.
+     */
+    private fun extractSpokenResponse(raw: String): String {
+        val start = raw.indexOf('{')
+        val end = raw.lastIndexOf('}')
+        if (start != -1 && end != -1 && end > start) {
+            try {
+                val json = JSONObject(raw.substring(start, end + 1))
+                val spoken = json.optString("spoken_response", "")
+                if (spoken.isNotBlank()) return spoken
+            } catch (_: Exception) {}
+        }
+        return raw.trim()
     }
 }
