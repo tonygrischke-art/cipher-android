@@ -98,7 +98,6 @@ class LiteRTEngine(
             .setTopK(TOP_K)
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
-            .setDelegate(LlmInference.Delegate.CPU)  // Explicit CPU; prevents GPU fallback on CPU path
             .build()
 
         val session = LlmInference.createFromOptions(context, options)

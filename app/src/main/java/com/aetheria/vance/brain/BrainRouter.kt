@@ -85,8 +85,9 @@ class BrainRouter(
                     liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.ACTION)
                 }
                 if (raw != null) {
-                    val json = extractActionJson(raw)
-                    val spoken = extractSpokenResponse(raw)
+                    val text = raw.text
+                    val json = extractActionJson(text)
+                    val spoken = extractSpokenResponse(text)
                     return BrainResult(actionJson = json, spokenResponse = spoken)
                 }
                 Log.w(TAG, "Action model timed out, falling back to Groq")
@@ -126,7 +127,7 @@ class BrainRouter(
                     liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
                 }
                 if (raw != null) {
-                    return BrainResult(spokenResponse = raw.trim())
+                    return BrainResult(spokenResponse = raw.text.trim())
                 }
                 Log.w(TAG, "Reasoning model timed out, falling back to Groq")
             } catch (e: LiteRTEngine.ModelNotFoundException) {
@@ -161,7 +162,7 @@ class BrainRouter(
                     liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
                 }
                 if (raw != null) {
-                    return BrainResult(spokenResponse = raw.trim())
+                    return BrainResult(spokenResponse = raw.text.trim())
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "On-device conversation failed: ${e.message}")
