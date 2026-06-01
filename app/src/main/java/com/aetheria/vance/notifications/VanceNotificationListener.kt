@@ -69,7 +69,7 @@ class VanceNotificationListener : NotificationListenerService() {
             if (notificationBuffer.size >= MAX_BUFFER_SIZE) {
                 notificationBuffer.removeFirst()
             }
-            notificationBuffer.addLast(summary)
+            notificationBuffer.add(summary)
         }
 
         lastNotificationKey = sbn.key
