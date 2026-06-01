@@ -15,6 +15,7 @@ import com.aetheria.vance.R
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.ui.MainActivity
 import org.tensorflow.lite.Interpreter
+import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -142,11 +143,28 @@ class WakeWordService : Service() {
     }
 
     private fun loadModelFile(path: String): MappedByteBuffer {
-        val fd = assets.openFd(path)
-        val stream = FileInputStream(fd.fileDescriptor)
-        return stream.channel.map(
-            FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength
-        )
+        return try {
+            val fd = assets.openFd(path)
+            val stream = FileInputStream(fd.fileDescriptor)
+            stream.channel.map(
+                FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength
+            )
+        } catch (e: Exception) {
+            // Fallback: copy asset to internal storage, then memory-map
+            Log.w(TAG, "openFd failed for $path (${e.message}), using file copy fallback")
+            val outFile = File(filesDir, path.substringAfterLast("/"))
+            if (!outFile.exists()) {
+                assets.open(path).use { input ->
+                    outFile.parentFile?.mkdirs()
+                    outFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            FileInputStream(outFile).channel.map(
+                FileChannel.MapMode.READ_ONLY, 0, outFile.length()
+            )
+        }
     }
 
     private fun interpOptions() = Interpreter.Options().apply {
@@ -321,7 +339,8 @@ class WakeWordService : Service() {
         Log.d(TAG, "Wake word detected! confidence=$confidence")
         val intent = Intent(this, VanceCoreService::class.java).apply {
             action = VanceCoreService.ACTION_WAKE_WORD_DETECTED
-            putExtra("wake_word", "hey_cipher")
+            putExtra("wake_word", "hey_jarvis")
+            putExtra("confidence", confidence)
         }
         startService(intent)
     }

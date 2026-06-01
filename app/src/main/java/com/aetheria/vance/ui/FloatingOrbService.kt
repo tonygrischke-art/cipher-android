@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.graphics.*
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
@@ -87,6 +88,10 @@ class FloatingOrbService : Service() {
     }
 
     private fun createOrb() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.e(TAG, "Cannot create floating orb — SYSTEM_ALERT_WINDOW permission not granted")
+            return
+        }
         val params = WindowManager.LayoutParams().apply {
             width = 160
             height = 160

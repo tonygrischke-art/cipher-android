@@ -58,6 +58,10 @@ android {
     lint {
         abortOnError = false
     }
+
+    aaptOptions {
+        noCompress "tflite"
+    }
 }
 
 dependencies {
