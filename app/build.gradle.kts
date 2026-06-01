@@ -96,10 +96,8 @@ dependencies {
     // MediaPipe LiteRT LLM
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
 
-    // openWakeWord — on-device wake word detection (no API key)
-    // Uses TFLite model bundled as asset + org.tensorflow:tensorflow-lite runtime
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    // openWakeWord — on-device wake word detection
+    // Now uses SpeechRecognizer (built-in) instead of TFLite for custom wake word support
 
     // Shizuku
     implementation("dev.rikka.shizuku:api:13.1.5")

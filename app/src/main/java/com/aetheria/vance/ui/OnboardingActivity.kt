@@ -717,7 +717,7 @@ fun WakeWordPage(viewModel: OnboardingViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Say \"Hey Jarvis\" to test your wake word",
+            text = "Say \"Hey Vance\" to test your wake word",
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
