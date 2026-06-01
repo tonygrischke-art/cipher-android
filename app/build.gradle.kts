@@ -59,7 +59,7 @@ android {
         abortOnError = false
     }
 
-    aaptOptions {
+    androidResources {
         noCompress "tflite"
     }
 }
