@@ -68,6 +68,14 @@ class OnboardingActivity : ComponentActivity() {
 
     private lateinit var prefs: SharedPreferences
 
+    // Fix 1: Use ActivityResult launcher for overlay permission instead of raw startActivity
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Fix 3: Check permission on return, don't assume it was granted
+        // No-op here — onResume() handles the check
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -86,10 +94,24 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         onComplete = { markCompleteAndProceed() },
-                        onSkip = { markCompleteAndProceed() }
+                        onSkip = { markCompleteAndProceed() },
+                        overlayPermissionLauncher = overlayPermissionLauncher
                     )
                 }
             }
+        }
+    }
+
+    // Fix 3: Re-check overlay permission when returning from Settings
+    override fun onResume() {
+        super.onResume()
+        try {
+            if (Settings.canDrawOverlays(this)) {
+                // Overlay granted — if we're stuck on the permissions page, advance
+                // The composable will recompose and show "Granted"
+            }
+        } catch (_: Exception) {
+            Log.e(TAG, "Error checking overlay permission in onResume")
         }
     }
 
@@ -171,7 +193,8 @@ class OnboardingViewModel @Inject constructor(
 @Composable
 fun OnboardingFlow(
     onComplete: () -> Unit,
-    onSkip: () -> Unit
+    onSkip: () -> Unit,
+    overlayPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>
 ) {
     val viewModel: OnboardingViewModel = hiltViewModel()
 
@@ -201,7 +224,7 @@ fun OnboardingFlow(
             ) { page ->
                 when (page) {
                     0 -> WelcomePage(viewModel)
-                    1 -> PermissionsPage(viewModel)
+                    1 -> PermissionsPage(viewModel, overlayPermissionLauncher)
                     2 -> AccessibilityPage(viewModel)
                     3 -> ShizukuPage(viewModel)
                     4 -> WakeWordPage(viewModel)
@@ -309,7 +332,7 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
 // ── Page 1: Permissions ──────────────────────────────────────────
 
 @Composable
-fun PermissionsPage(viewModel: OnboardingViewModel) {
+fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>) {
     val context = LocalContext.current
 
     // Poll overlay permission status
@@ -412,12 +435,15 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                 .clickable {
                     if (Settings.canDrawOverlays(context)) return@clickable
                     try {
-                        context.startActivity(Intent(
+                        val intent = Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:${context.packageName}")
-                        ))
-                    } catch (_: Exception) {
-                        Log.e("Onboarding", "Cannot open overlay settings")
+                        )
+                        overlayPermissionLauncher.launch(intent)
+                    } catch (e: SecurityException) {
+                        Log.e(TAG, "SecurityException launching overlay permission", e)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Cannot open overlay settings", e)
                     }
                 },
             colors = CardDefaults.cardColors(
@@ -430,7 +456,14 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Check, contentDescription = null)
+                Icon(
+                    imageVector = if (Settings.canDrawOverlays(context))
+                        Icons.Default.CheckCircle else Icons.Default.Check,
+                    contentDescription = null,
+                    tint = if (Settings.canDrawOverlays(context))
+                        MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "Display Over Other Apps", fontWeight = FontWeight.Medium)
@@ -443,11 +476,16 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                 TextButton(onClick = {
                     if (Settings.canDrawOverlays(context)) return@TextButton
                     try {
-                        context.startActivity(Intent(
+                        val intent = Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:${context.packageName}")
-                        ))
-                    } catch (_: Exception) {}
+                        )
+                        overlayPermissionLauncher.launch(intent)
+                    } catch (e: SecurityException) {
+                        Log.e(TAG, "SecurityException launching overlay permission", e)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Cannot open overlay settings", e)
+                    }
                 }) {
                     Text(if (Settings.canDrawOverlays(context)) "Granted" else "Grant")
                 }
