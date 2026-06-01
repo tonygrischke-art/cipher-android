@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Cipher" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.Vance" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/cipher_primary</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSecondary">@color/cipher_secondary</item>

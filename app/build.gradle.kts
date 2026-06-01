@@ -6,12 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.aetheria.cipher"
+    namespace = "com.aetheria.vance"
     compileSdk = 34
-    buildToolsVersion = "34.0.0"
 
     defaultConfig {
-        applicationId = "com.aetheria.cipher"
+        applicationId = "com.aetheria.vance"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

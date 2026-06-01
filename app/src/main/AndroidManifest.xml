@@ -38,18 +38,18 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:name=".CipherApplication"
+        android:name=".VanceApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Cipher"
+        android:theme="@style/Theme.Vance"
         tools:targetApi="34">
 
         <activity
             android:name=".ui.OnboardingActivity"
             android:exported="true"
-            android:theme="@style/Theme.Cipher">
+            android:theme="@style/Theme.Vance">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -57,24 +57,24 @@
         </activity>
 
         <activity
-            android:name=".ui.CipherChatActivity"
+            android:name=".ui.VanceChatActivity"
             android:exported="false"
-            android:theme="@style/Theme.Cipher" />
+            android:theme="@style/Theme.Vance" />
 
         <activity
-            android:name=".ui.CipherSettingsActivity"
+            android:name=".ui.VanceSettingsActivity"
             android:exported="false"
-            android:theme="@style/Theme.Cipher" />
+            android:theme="@style/Theme.Vance" />
 
         <activity
             android:name=".MainActivity"
             android:exported="false"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Cipher" />
+            android:theme="@style/Theme.Vance" />
 
         <!-- CipherCore foreground service — always running -->
         <service
-            android:name=".core.CipherCoreService"
+            android:name=".core.VanceCoreService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
@@ -88,7 +88,7 @@
 
         <!-- Accessibility service — sees and interacts with all apps -->
         <service
-            android:name=".accessibility.CipherAccessibilityService"
+            android:name=".accessibility.VanceAccessibilityService"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
@@ -102,7 +102,7 @@
 
         <!-- Notification listener service -->
         <service
-            android:name=".notifications.CipherNotificationListener"
+            android:name=".notifications.VanceNotificationListener"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -125,9 +125,9 @@
             android:exported="false"
             android:multiprocess="false" />
 
-        <!-- CipherUserService for Shizuku -->
+        <!-- VanceUserService for Shizuku -->
         <service
-            android:name=".shizuku.CipherUserService"
+            android:name=".shizuku.VanceUserService"
             android:enabled="true"
             android:exported="false"
             android:permission="moe.shizuku.manager.permission.API_V23" />
