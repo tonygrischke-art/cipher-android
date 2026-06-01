@@ -181,7 +181,7 @@ class WakeWordService : Service() {
 
                     // Add samples to rolling buffer
                     for (i in 0 until read) {
-                        audioBuffer.addLast(buffer[i])
+                        audioBuffer.add(buffer[i])
                     }
                     // Trim buffer to max needed size
                     while (audioBuffer.size > MEL_WINDOW_SIZE + STRIDE_SAMPLES) {
@@ -201,7 +201,7 @@ class WakeWordService : Service() {
                     val embedding = computeEmbedding(melArray) ?: continue
 
                     // Step 3: Accumulate embeddings and run classification
-                    embeddingHistory.addLast(embedding)
+                    embeddingHistory.add(embedding)
                     while (embeddingHistory.size > EMBEDDING_HISTORY_SIZE) {
                         embeddingHistory.removeFirst()
                     }
@@ -233,7 +233,7 @@ class WakeWordService : Service() {
             order(ByteOrder.nativeOrder())
             asFloatBuffer().put(audioData)
         }
-        val outputSize = melInterpreter!!.getOutputTensor(0).size()
+        val outputSize = melInterpreter!!.getOutputTensor(0).shape()[0]
         val output = Array(1) { FloatArray(outputSize) }
         melInterpreter!!.run(inputBuffer, output)
         return output[0]
@@ -247,7 +247,7 @@ class WakeWordService : Service() {
                 order(ByteOrder.nativeOrder())
                 asFloatBuffer().put(melData)
             }
-            val outputSize = embedInterpreter!!.getOutputTensor(0).size()
+            val outputSize = embedInterpreter!!.getOutputTensor(0).shape()[0]
             val output = Array(1) { FloatArray(outputSize) }
             embedInterpreter!!.run(inputBuffer, output)
             output[0]
