@@ -60,7 +60,7 @@ android {
     }
 
     androidResources {
-        noCompress "tflite"
+        noCompress += "tflite"
     }
 }
 
