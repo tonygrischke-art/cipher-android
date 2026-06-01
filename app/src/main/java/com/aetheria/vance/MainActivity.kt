@@ -14,6 +14,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.shizuku.ShizukuBridge
 import com.aetheria.vance.ui.theme.CipherTheme
@@ -68,6 +72,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val showChat = intent?.getBooleanExtra("show_chat", false) ?: false
 
@@ -157,7 +162,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CipherApp(showChat: Boolean = false) {
-    WelcomeScreen()
+    Box(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+        WelcomeScreen()
+    }
 }
 
 @Composable

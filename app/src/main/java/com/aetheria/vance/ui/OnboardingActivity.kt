@@ -20,6 +20,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -67,6 +70,7 @@ class OnboardingActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
 
         if (prefs.getBoolean(KEY_COMPLETED, false)) {
@@ -171,8 +175,7 @@ fun OnboardingFlow(
 ) {
     val viewModel: OnboardingViewModel = hiltViewModel()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Progress indicator
+    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
         LinearProgressIndicator(
             progress = { (viewModel.currentPage + 1).toFloat() / viewModel.totalPages },
             modifier = Modifier
