@@ -441,9 +441,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                         )
                         overlayPermissionLauncher.launch(intent)
                     } catch (e: SecurityException) {
-                        Log.e(TAG, "SecurityException launching overlay permission", e)
+                        Log.e("Onboarding", "SecurityException launching overlay permission", e)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Cannot open overlay settings", e)
+                        Log.e("Onboarding", "Cannot open overlay settings", e)
                     }
                 },
             colors = CardDefaults.cardColors(
@@ -482,9 +482,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                         )
                         overlayPermissionLauncher.launch(intent)
                     } catch (e: SecurityException) {
-                        Log.e(TAG, "SecurityException launching overlay permission", e)
+                        Log.e("Onboarding", "SecurityException launching overlay permission", e)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Cannot open overlay settings", e)
+                        Log.e("Onboarding", "Cannot open overlay settings", e)
                     }
                 }) {
                     Text(if (Settings.canDrawOverlays(context)) "Granted" else "Grant")
