@@ -117,14 +117,6 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Shizuku provider -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="false"
-            android:multiprocess="false" />
-
         <!-- VanceUserService for Shizuku -->
         <service
             android:name=".shizuku.VanceUserService"
