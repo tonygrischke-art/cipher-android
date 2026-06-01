@@ -63,7 +63,6 @@ class CipherSettingsViewModel @Inject constructor(
     var wakeWordSensitivity by mutableFloatStateOf(0.5f)
     var inferenceTier by mutableStateOf("auto")
     var groqApiKey by mutableStateOf("")
-    var picovoiceAccessKey by mutableStateOf("")
 
     // Capability toggles
     var smsEnabled by mutableStateOf(true)
@@ -84,7 +83,6 @@ class CipherSettingsViewModel @Inject constructor(
     private fun loadPreferences() {
         viewModelScope.launch {
             groqApiKey = memoryStore.getPreference("groq_api_key") ?: ""
-            picovoiceAccessKey = memoryStore.getPreference("picovoice_access_key") ?: ""
             wakeWordSensitivity = memoryStore.getPreference("wake_word_sensitivity")?.toFloatOrNull() ?: 0.5f
             inferenceTier = memoryStore.getPreference("inference_tier") ?: "auto"
             smsEnabled = memoryStore.getPreference("cap_sms") != "false"
@@ -139,7 +137,6 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var groqKeyVisible by remember { mutableStateOf(false) }
-    var picovoiceKeyVisible by remember { mutableStateOf(false) }
 
     if (showClearConfirmDialog) {
         AlertDialog(
@@ -293,25 +290,10 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            OutlinedTextField(
-                value = viewModel.picovoiceAccessKey,
-                onValueChange = {
-                    viewModel.picovoiceAccessKey = it
-                    viewModel.savePreference("picovoice_access_key", it)
-                },
-                label = { Text("Picovoice Access Key") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = if (picovoiceKeyVisible) {
-                    androidx.compose.ui.text.input.VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
-                trailingIcon = {
-                    IconButton(onClick = { picovoiceKeyVisible = !picovoiceKeyVisible }) {
-                        Icon(Icons.Default.Lock, contentDescription = "Toggle visibility")
-                    }
-                }
+            Text(
+                text = "Wake word detection uses openWakeWord (on-device, no API key).",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 

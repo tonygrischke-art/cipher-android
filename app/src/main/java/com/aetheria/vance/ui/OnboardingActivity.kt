@@ -128,7 +128,6 @@ class OnboardingViewModel @Inject constructor(
         private set
 
     var groqKey by mutableStateOf("")
-    var picovoiceKey by mutableStateOf("")
 
     val totalPages = 7
 
@@ -709,7 +708,7 @@ fun ApiKeysPage(viewModel: OnboardingViewModel) {
             modifier = Modifier.padding(bottom = 8.dp)
         )
         Text(
-            text = "Optional — for cloud fallback and custom wake words",
+            text = "Optional — for cloud inference fallback",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -726,19 +725,9 @@ fun ApiKeysPage(viewModel: OnboardingViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        OutlinedTextField(
-            value = viewModel.picovoiceKey,
-            onValueChange = { viewModel.picovoiceKey = it },
-            label = { Text("Picovoice Access Key") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         Text(
-            text = "Both keys are stored locally using EncryptedSharedPreferences. " +
-                "They are never shared.",
+            text = "Wake word detection is built-in and fully on-device. " +
+                "No API key needed.",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
