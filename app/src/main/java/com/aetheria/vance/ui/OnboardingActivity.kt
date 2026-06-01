@@ -312,6 +312,14 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
 fun PermissionsPage(viewModel: OnboardingViewModel) {
     val context = LocalContext.current
 
+    // Poll overlay permission status
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000)
+            if (Settings.canDrawOverlays(context)) break
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -402,13 +410,14 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        if (!Settings.canDrawOverlays(context)) {
-                            context.startActivity(Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${context.packageName}")
-                            ))
-                        }
+                    if (Settings.canDrawOverlays(context)) return@clickable
+                    try {
+                        context.startActivity(Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        ))
+                    } catch (_: Exception) {
+                        Log.e("Onboarding", "Cannot open overlay settings")
                     }
                 },
             colors = CardDefaults.cardColors(
@@ -432,14 +441,15 @@ fun PermissionsPage(viewModel: OnboardingViewModel) {
                     )
                 }
                 TextButton(onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (Settings.canDrawOverlays(context)) return@TextButton
+                    try {
                         context.startActivity(Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:${context.packageName}")
                         ))
-                    }
+                    } catch (_: Exception) {}
                 }) {
-                    Text("Grant")
+                    Text(if (Settings.canDrawOverlays(context)) "Granted" else "Grant")
                 }
             }
         }
