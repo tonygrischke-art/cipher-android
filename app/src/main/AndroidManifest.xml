@@ -124,7 +124,8 @@
         <service
             android:name=".ui.FloatingOrbService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
 
         <!-- VanceUserService for Shizuku -->
         <service
