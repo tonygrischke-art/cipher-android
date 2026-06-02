@@ -128,6 +128,7 @@ dependencies {
     // NPU: TensorFlow Lite with Neuron delegate
     implementation("org.tensorflow:tensorflow-lite:2.15.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.15.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")  // NNAPI delegate factory for WakeWordService
     // Neuron delegate — check MediaTek/TensorFlow documentation for exact artifact
     // implementation("org.tensorflow:tensorflow-lite-neuron:2.15.0")  // May vary by SDK version
 
@@ -147,6 +148,9 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // WorkManager — for BootReceiver deferred service start
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

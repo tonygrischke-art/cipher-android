@@ -21,6 +21,9 @@ import java.io.File
  *   - Attempts NPU execution first via libneuron_adapter_mgvi.so
  *   - Falls back to CPU delegate if NPU compilation fails
  *   - Falls back to Groq if local models are unavailable
+ *
+ * CRASH FIX: Checks NpuBridge.nativeLibAvailable before constructing NpuBridge.
+ * If the native lib failed to load, skips NPU entirely → goes straight to Groq fallback.
  */
 class LiteRTEngine(
     private val context: android.content.Context,
@@ -54,13 +57,24 @@ class LiteRTEngine(
     )
 
     private val sessions = mutableMapOf<ModelSlot, LlmInference>()
-    private val npuBridge = NpuBridge(context)
+
+    // Only construct NpuBridge if the native lib loaded successfully
+    private val npuBridge: NpuBridge? = if (NpuBridge.nativeLibAvailable) {
+        NpuBridge(context)
+    } else {
+        Log.w(TAG, "NpuBridge.nativeLibAvailable=false — skipping NPU, using Groq fallback")
+        null
+    }
     private var npuAvailable = false
 
     init {
-        // Try to initialize NPU on creation
-        npuAvailable = npuBridge.initialize()
-        Log.i(TAG, "LiteRTEngine initialized. NPU available: $npuAvailable")
+        // Try to initialize NPU on creation — only if bridge is available
+        npuAvailable = if (npuBridge != null) {
+            npuBridge.initialize()
+        } else {
+            false
+        }
+        Log.i(TAG, "LiteRTEngine initialized. NPU available: $npuAvailable (nativeLibAvailable=${NpuBridge.nativeLibAvailable})")
     }
 
     private fun modelFile(slot: ModelSlot): File = File(modelDir, slot.fileName)
@@ -114,8 +128,8 @@ class LiteRTEngine(
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
 
-            // Try NPU first if available
-            if (npuAvailable) {
+            // Try NPU first if available (and bridge exists)
+            if (npuAvailable && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult
@@ -151,6 +165,7 @@ class LiteRTEngine(
      * Attempt NPU-accelerated inference via Neuron Adapter.
      */
     private fun tryNpuInference(prompt: String, slot: ModelSlot): InferenceResult? {
+        if (npuBridge == null) return null
         val file = modelFile(slot)
         if (!file.exists()) return null
 
@@ -210,7 +225,7 @@ class LiteRTEngine(
             try { session.close() } catch (e: Exception) { Log.w(TAG, "Error closing ${slot.name}", e) }
         }
         sessions.clear()
-        npuBridge.shutdown()
+        npuBridge?.shutdown()
     }
 
     private fun estimateTokens(text: String): Int {

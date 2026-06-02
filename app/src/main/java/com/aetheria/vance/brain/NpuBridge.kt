@@ -9,18 +9,23 @@ import android.util.Log
  * This class provides direct NPU access for TFLite/LiteRT model inference,
  * bypassing NNAPI entirely for maximum performance on MT6878.
  *
- * Usage:
- * ```
- * val npu = NpuBridge(context)
- * if (npu.initialize()) {
- *     val result = npu.runInference("/path/to/model.tflite", "input text")
- * }
- * ```
+ * CRASH FIX: The companion init block now catches UnsatisfiedLinkError and
+ * sets `nativeLibAvailable = false`. Callers MUST check this flag before
+ * constructing NpuBridge or calling any native method.
  */
 class NpuBridge(private val context: Context) {
 
     companion object {
         private const val TAG = "NpuBridge"
+
+        /**
+         * Set to true only if System.loadLibrary("vance_npu") succeeded.
+         * If false, native methods will throw UnsatisfiedLinkError — do NOT
+         * call them or construct NpuBridge at all.
+         */
+        @JvmStatic
+        var nativeLibAvailable = false
+            private set
 
         // Library paths to try (in order of preference)
         private val NEURON_LIB_PATHS = listOf(
@@ -32,9 +37,11 @@ class NpuBridge(private val context: Context) {
         init {
             try {
                 System.loadLibrary("vance_npu")
+                nativeLibAvailable = true
                 Log.d(TAG, "Native library loaded: libvance_npu.so")
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load native library", e)
+                nativeLibAvailable = false
+                Log.e(TAG, "Failed to load native library libvance_npu.so — NPU unavailable", e)
             }
         }
     }
@@ -48,6 +55,10 @@ class NpuBridge(private val context: Context) {
      * @return true if NPU is available and ready
      */
     fun initialize(): Boolean {
+        if (!nativeLibAvailable) {
+            Log.w(TAG, "nativeLibAvailable=false, cannot initialize NPU")
+            return false
+        }
         if (initialized) return true
 
         // Check if any Neuron library path exists
@@ -109,7 +120,7 @@ class NpuBridge(private val context: Context) {
         }
     }
 
-    // Native methods
+    // Native methods — only safe to call if nativeLibAvailable == true
     private external fun nativeInitNpu(): Boolean
     private external fun nativeShutdownNpu()
     private external fun nativeIsNpuAvailable(): Boolean
