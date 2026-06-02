@@ -166,6 +166,9 @@ class VanceCoreService : Service() {
         val wakeWord = intent.getStringExtra("wake_word") ?: "unknown"
         Log.d(TAG, "Wake word detected: $wakeWord")
 
+        // Upgrade FGS to include microphone type now that we actually need the mic
+        enableMicrophoneFgs()
+
         voicePipeline.startListening(
             onTranscript = { transcript ->
                 handleTranscript(transcript)
@@ -254,7 +257,7 @@ class VanceCoreService : Service() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun startForeground() {
+    private fun startForeground(withMicrophone: Boolean = false) {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -262,16 +265,27 @@ class VanceCoreService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Cipher")
-            .setContentText("Agent active — listening")
+            .setContentText(if (withMicrophone) "Agent active — listening" else "Agent active — idle")
             .setSmallIcon(R.drawable.cipher_orb)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            if (withMicrophone) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            startForeground(NOTIFICATION_ID, notification, types)
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /** Call when actually starting mic capture (wake word detected / user prompt). */
+    fun enableMicrophoneFgs() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(withMicrophone = true)
         }
     }
 }

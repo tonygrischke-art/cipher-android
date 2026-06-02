@@ -16,6 +16,7 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
+import android.content.pm.ServiceInfo
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.ui.MainActivity
 import java.util.Locale
@@ -81,23 +82,27 @@ class WakeWordService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun startForeground() {
+    private fun startForeground(withMicrophone: Boolean = false) {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Vance")
-            .setContentText("Wake word listener active — say \"Hey Vance\"")
+            .setContentText(
+                if (withMicrophone) "Wake word listener active — say \"Hey Vance\""
+                else "Vance standby"
+            )
             .setSmallIcon(R.drawable.cipher_orb)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID, notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
+            var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            if (withMicrophone) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            startForeground(NOTIFICATION_ID, notification, types)
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -221,6 +226,11 @@ class WakeWordService : Service() {
     }
 
     private fun startListening() {
+        // Upgrade FGS to include microphone — we're about to use the mic
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(withMicrophone = true)
+        }
+
         if (speechRecognizer == null) {
             initializeSpeechRecognizer()
         }
