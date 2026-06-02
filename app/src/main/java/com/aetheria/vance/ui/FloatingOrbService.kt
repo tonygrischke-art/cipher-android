@@ -19,6 +19,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.core.app.NotificationCompat
+import com.aetheria.vance.R
 import com.aetheria.vance.voice.VoicePipeline
 import kotlinx.coroutines.*
 import kotlin.math.abs
