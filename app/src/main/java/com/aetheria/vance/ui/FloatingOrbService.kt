@@ -1,6 +1,8 @@
 package com.aetheria.vance.ui
 
 import android.animation.ValueAnimator
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -16,6 +18,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.core.app.NotificationCompat
 import com.aetheria.vance.voice.VoicePipeline
 import kotlinx.coroutines.*
 import kotlin.math.abs
@@ -39,6 +42,8 @@ class FloatingOrbService : Service() {
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        // Fix 3: Start as foreground service to prevent Android 10+ crash
+        startForeground()
         createOrb()
         registerStateReceiver()
     }
@@ -58,6 +63,28 @@ class FloatingOrbService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun startForeground() {
+        val channelId = "cipher_orb_channel"
+        val channel = NotificationChannel(
+            channelId, "Vance Floating Orb",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply { description = "Vance floating orb overlay" }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setContentTitle("Vance")
+            .setContentText("Floating orb active")
+            .setSmallIcon(R.drawable.cipher_orb)
+            .setOngoing(true)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1003, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1003, notification)
+        }
+    }
 
     fun setOrbState(state: OrbState) {
         Log.d(TAG, "Orb state: $state")

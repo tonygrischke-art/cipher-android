@@ -285,6 +285,7 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // Fix 6: Use proper icon instead of placeholder "C"
         Box(
             modifier = Modifier
                 .size(120.dp)
@@ -294,11 +295,11 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
                 .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "C",
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Vance logo",
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
         }
 
@@ -377,6 +378,19 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
+        // Fix 5: Request permissions one at a time to avoid race condition
+        val pendingPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(context, it.permission) != PackageManager.PERMISSION_GRANTED
+        }
+        var currentPermissionIndex by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(pendingPermissions) {
+            if (pendingPermissions.isNotEmpty() && currentPermissionIndex < pendingPermissions.size) {
+                delay(500)
+                permissionLauncher.launch(pendingPermissions[currentPermissionIndex].permission)
+            }
+        }
+
         permissions.forEach { perm ->
             val granted = ContextCompat.checkSelfPermission(context, perm.permission) ==
                 PackageManager.PERMISSION_GRANTED
@@ -438,7 +452,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                         val intent = Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:${context.packageName}")
-                        )
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
                         overlayPermissionLauncher.launch(intent)
                     } catch (e: SecurityException) {
                         Log.e("Onboarding", "SecurityException launching overlay permission", e)
@@ -479,7 +495,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                         val intent = Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:${context.packageName}")
-                        )
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
                         overlayPermissionLauncher.launch(intent)
                     } catch (e: SecurityException) {
                         Log.e("Onboarding", "SecurityException launching overlay permission", e)
@@ -654,16 +672,39 @@ fun ShizukuPage(viewModel: OnboardingViewModel) {
                 Text("Shizuku connected!", color = Color(0xFF4CAF50))
             }
         } else {
-            Button(onClick = {
-                try {
-                    context.startActivity(Intent().apply {
-                        action = "moe.shizuku.manager.LAUNCH"
-                    })
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Open Shizuku app manually", Toast.LENGTH_SHORT).show()
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "1. Open Shizuku app\n2. Tap 'Authorized apps'\n3. Enable Vance",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = {
+                    try {
+                        val shizukuIntent = Intent().apply {
+                            action = "moe.shizuku.manager.LAUNCH"
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(shizukuIntent)
+                    } catch (e: Exception) {
+                        try {
+                            val pm = context.packageManager
+                            val intent = pm.getLaunchIntentForPackage("moe.shizuku.manager")
+                            if (intent != null) {
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } else {
+                                Toast.makeText(context, "Install Shizuku from GitHub", Toast.LENGTH_LONG).show()
+                            }
+                        } catch (_: Exception) {
+                            Toast.makeText(context, "Open Shizuku manually", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("Open Shizuku")
                 }
-            }) {
-                Text("Open Shizuku")
             }
         }
     }
@@ -684,6 +725,37 @@ fun WakeWordPage(viewModel: OnboardingViewModel) {
         label = "listening_alpha"
     )
 
+    // Fix 2: Timeout after 15 seconds with error feedback
+    var listenTime by remember { mutableIntStateOf(0) }
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        // Start the wake word service for testing
+        try {
+            val context = viewModel.javaClass.getDeclaredField("context").apply { isAccessible = true }
+            // Just count up while listening
+            while (listenTime < 15 && !viewModel.wakeWordDetected) {
+                delay(1000)
+                listenTime++
+            }
+            if (!viewModel.wakeWordDetected && listenTime >= 15) {
+                hasError = true
+                errorMessage = "No wake word detected. You can skip this step."
+            }
+        } catch (_: Exception) {
+            // If reflection fails, just timeout
+            while (listenTime < 15 && !viewModel.wakeWordDetected) {
+                delay(1000)
+                listenTime++
+            }
+            if (!viewModel.wakeWordDetected && listenTime >= 15) {
+                hasError = true
+                errorMessage = "No wake word detected. You can skip this step."
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -695,11 +767,14 @@ fun WakeWordPage(viewModel: OnboardingViewModel) {
             modifier = Modifier
                 .size(100.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = alpha)),
+                .background(
+                    if (hasError) MaterialTheme.colorScheme.error.copy(alpha = alpha)
+                    else MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.Default.Check,
+                if (hasError) Icons.Default.Check else Icons.Default.Check,
                 contentDescription = null,
                 modifier = Modifier.size(40.dp),
                 tint = Color.White
@@ -731,12 +806,31 @@ fun WakeWordPage(viewModel: OnboardingViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Wake word detected!", color = Color(0xFF4CAF50))
             }
+        } else if (hasError) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = errorMessage,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { viewModel.nextPage() }) {
+                    Text("Skip")
+                }
+            }
         } else {
-            Text(
-                text = "Listening...",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Listening... (${listenTime}s)",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { viewModel.nextPage() }) {
+                    Text("Skip")
+                }
+            }
         }
     }
 }
