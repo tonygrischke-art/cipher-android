@@ -194,8 +194,6 @@ class WakeWordService : Service() {
 
             val opts = Interpreter.Options().apply {
                 setNumThreads(2)
-                // Use NNAPI if available for accelerator support
-                addDelegateFactory(org.tensorflow.lite.nnapi.NnapiDelegate.Factory())
             }
 
             melInterpreter = Interpreter(File(melPath), opts)
@@ -308,34 +306,34 @@ class WakeWordService : Service() {
                 }
 
                 // Step 1: Mel-spectrogram
-                melInterpreter?.let { mel ->
-                    try {
-                        mel.run(inputAudio, melOutput)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Mel-spectrogram inference error", e)
-                        continue
-                    }
-                } ?: continue
+                val mel = melInterpreter
+                if (mel == null) continue
+                try {
+                    mel.run(inputAudio, melOutput)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Mel-spectrogram inference error", e)
+                    continue
+                }
 
                 // Step 2: Embedding
-                embeddingInterpreter?.let { emb ->
-                    try {
-                        emb.run(melOutput, embeddingOutput)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Embedding inference error", e)
-                        continue
-                    }
-                } ?: continue
+                val emb = embeddingInterpreter
+                if (emb == null) continue
+                try {
+                    emb.run(melOutput, embeddingOutput)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Embedding inference error", e)
+                    continue
+                }
 
                 // Step 3: Wake word classifier
-                wakeWordInterpreter?.let { ww ->
-                    try {
-                        ww.run(embeddingOutput, wwOutput)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Wake word classifier inference error", e)
-                        continue
-                    }
-                } ?: continue
+                val ww = wakeWordInterpreter
+                if (ww == null) continue
+                try {
+                    ww.run(embeddingOutput, wwOutput)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Wake word classifier inference error", e)
+                    continue
+                }
 
                 val score = wwOutput[0][0]
                 val threshold = (1.0f - sensitivity) * DEFAULT_THRESHOLD

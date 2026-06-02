@@ -128,7 +128,6 @@ dependencies {
     // NPU: TensorFlow Lite with Neuron delegate
     implementation("org.tensorflow:tensorflow-lite:2.15.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.15.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")  // NNAPI delegate factory for WakeWordService
     // Neuron delegate — check MediaTek/TensorFlow documentation for exact artifact
     // implementation("org.tensorflow:tensorflow-lite-neuron:2.15.0")  // May vary by SDK version
 
