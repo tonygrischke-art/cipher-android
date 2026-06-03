@@ -121,16 +121,17 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun proceedToMain() {
-        // Start VanceCoreService
-        val serviceIntent = Intent(this, VanceCoreService::class.java)
+        // Start all services
+        val coreIntent = Intent(this, VanceCoreService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
+            startForegroundService(coreIntent)
         } else {
-            startService(serviceIntent)
+            startService(coreIntent)
         }
-        // Start FloatingOrbService
         startService(Intent(this, FloatingOrbService::class.java))
-        finish()
+        startService(Intent(this, com.aetheria.vance.voice.WakeWordService::class.java))
+        // Give services time to bind before finishing
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ finish() }, 2000)
     }
 }
 
