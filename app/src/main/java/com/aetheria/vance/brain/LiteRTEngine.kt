@@ -66,15 +66,35 @@ class LiteRTEngine(
         null
     }
     private var npuAvailable = false
+    private var npuInitAttempted = false
 
     init {
-        // Try to initialize NPU on creation — only if bridge is available
-        npuAvailable = if (npuBridge != null) {
-            npuBridge.initialize()
-        } else {
-            false
+        // CRASH FIX: Do NOT initialize NPU in init block.
+        // NPU init is deferred to first actual use (generate/tryNpuInference).
+        // This prevents kernel panic on MT6878 when Hilt constructs the singleton
+        // during app startup — the NPU driver may not be ready at that point.
+        Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (nativeLibAvailable=${NpuBridge.nativeLibAvailable})")
+    }
+
+    /**
+     * Lazily initialize NPU on first use. Safe to call multiple times.
+     * Returns true if NPU is ready for inference.
+     */
+    private fun ensureNpuInitialized(): Boolean {
+        if (npuInitAttempted) return npuAvailable
+        npuInitAttempted = true
+        if (npuBridge == null) {
+            Log.w(TAG, "NpuBridge not available, skipping NPU init")
+            return false
         }
-        Log.i(TAG, "LiteRTEngine initialized. NPU available: $npuAvailable (nativeLibAvailable=${NpuBridge.nativeLibAvailable})")
+        try {
+            npuAvailable = npuBridge.initialize()
+            Log.i(TAG, "NPU lazy initialization result: $npuAvailable")
+        } catch (e: Exception) {
+            Log.e(TAG, "NPU initialization failed with exception — NPU unavailable", e)
+            npuAvailable = false
+        }
+        return npuAvailable
     }
 
     private fun modelFile(slot: ModelSlot): File = File(modelDir, slot.fileName)
@@ -84,7 +104,7 @@ class LiteRTEngine(
     fun getAvailableModels(): List<ModelSlot> =
         ModelSlot.entries.filter { isModelAvailable(it) }
 
-    fun isNpuAvailable(): Boolean = npuAvailable
+    fun isNpuAvailable(): Boolean = ensureNpuInitialized()
 
     /**
      * Get current compute backend for a model slot.
@@ -92,7 +112,7 @@ class LiteRTEngine(
     fun getBackend(slot: ModelSlot): ComputeBackend {
         return when {
             !isModelAvailable(slot) -> ComputeBackend.UNAVAILABLE
-            npuAvailable -> ComputeBackend.NPU
+            ensureNpuInitialized() -> ComputeBackend.NPU
             else -> ComputeBackend.CPU
         }
     }
@@ -129,7 +149,7 @@ class LiteRTEngine(
             val startTime = System.currentTimeMillis()
 
             // Try NPU first if available (and bridge exists)
-            if (npuAvailable && npuBridge != null) {
+            if (ensureNpuInitialized() && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult

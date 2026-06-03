@@ -80,8 +80,8 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         jniLibs {
-            // NPU: Keep native libraries uncompressed for faster loading
-            useLegacyPackaging = false
+            // NPU: Keep native libraries uncompressed for reliable loading on MTK
+            useLegacyPackaging = true
         }
     }
 

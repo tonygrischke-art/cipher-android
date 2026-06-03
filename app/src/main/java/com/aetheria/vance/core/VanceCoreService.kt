@@ -91,18 +91,8 @@ class VanceCoreService : Service() {
     private fun initializeSubsystems() {
         Log.d(TAG, "Initializing subsystems")
         voicePipeline.initialize()
-
-        try {
-            val wakeIntent = Intent(this, WakeWordService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(wakeIntent)
-            } else {
-                startService(wakeIntent)
-            }
-            Log.d(TAG, "WakeWordService started")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start WakeWordService", e)
-        }
+        // WakeWordService is started by OnboardingActivity's LaunchedEffect.
+        // Don't start it again here to avoid duplicate service instances.
     }
 
     private fun registerNotificationReceiver() {

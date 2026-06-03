@@ -121,16 +121,8 @@ class OnboardingActivity : ComponentActivity() {
     }
 
     private fun proceedToMain() {
-        // Start all services
-        val coreIntent = Intent(this, VanceCoreService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(coreIntent)
-        } else {
-            startService(coreIntent)
-        }
-        startService(Intent(this, FloatingOrbService::class.java))
-        startService(Intent(this, com.aetheria.vance.voice.WakeWordService::class.java))
-        // Give services plenty of time to bind before finishing
+        // Services are already started by the LaunchedEffect in OnboardingFlow.
+        // Just finish the activity after a delay to let them bind.
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ finish() }, 5000)
     }
 }
