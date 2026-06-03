@@ -297,7 +297,7 @@ class WakeWordService : Service() {
         try { speechRecognizer?.cancel() } catch (_: Exception) {}
         try { speechRecognizer?.destroy() } catch (_: Exception) {}
         speechRecognizer = null
-        Log.d(TAG, "Listener stopped")
+        Log.d(TAG, "Listener stopped and SR destroyed")
     }
 
     private fun onWakeWordDetected(phrase: String) {

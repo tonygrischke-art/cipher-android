@@ -57,10 +57,16 @@ class FloatingOrbService : Service() {
     }
 
     override fun onDestroy() {
+        orbView?.stopAnimationLoop()
         unregisterStateReceiver()
         destroyOrb()
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        orbView?.stopAnimationLoop()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -240,6 +246,7 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
     private var isMuted = false
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var animator: ValueAnimator? = null
+    private var isAnimationPaused = false
 
     init {
         setWillNotDraw(false)
@@ -248,7 +255,23 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
 
     fun setState(state: FloatingOrbService.OrbState) {
         currentState = state
-        animationTime = 0f
+        when (state) {
+            FloatingOrbService.OrbState.IDLE -> {
+                postDelayed({
+                    if (currentState == FloatingOrbService.OrbState.IDLE) {
+                        animator?.pause()
+                        isAnimationPaused = true
+                    }
+                }, 500L)
+            }
+            else -> {
+                removeCallbacks(null)
+                if (isAnimationPaused) {
+                    animator?.resume()
+                    isAnimationPaused = false
+                }
+            }
+        }
         invalidate()
     }
 
@@ -257,17 +280,21 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
         invalidate()
     }
 
-    private fun startAnimationLoop() {
+    fun startAnimationLoop() {
+        if (animator != null) return
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 16 // ~60fps
+            duration = 33L
             repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            addUpdateListener {
-                animationTime += 0.016f
-                invalidate()
-            }
+            addUpdateListener { invalidate() }
             start()
         }
+    }
+
+    fun stopAnimationLoop() {
+        removeCallbacks(null)
+        animator?.cancel()
+        animator = null
+        isAnimationPaused = false
     }
 
     override fun onDraw(canvas: Canvas) {

@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
@@ -53,9 +54,18 @@ class VanceCoreService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    private lateinit var powerManager: PowerManager
+    private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
+    @Volatile private var isThermallyThrottled = false
+    private val deferredTranscripts = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "VanceCoreService created")
+        powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            registerThermalListener()
+        }
         createNotificationChannel()
         startForeground()
         initializeSubsystems()
@@ -79,12 +89,50 @@ class VanceCoreService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "VanceCoreService destroying")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            thermalListener?.let { powerManager.removeThermalStatusListener(it) }
+        }
         voicePipeline.destroy()
         serviceScope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ── Thermal management ───────────────────────────────────────
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
+    private fun registerThermalListener() {
+        thermalListener = PowerManager.OnThermalStatusChangedListener { status ->
+            when {
+                status >= PowerManager.THERMAL_STATUS_SEVERE -> {
+                    Log.e(TAG, "Thermal SEVERE — pausing wake word")
+                    isThermallyThrottled = true
+                    deferredTranscripts.clear()
+                    sendBroadcast(Intent("com.aetheria.vance.THERMAL_PAUSE").apply {
+                        setPackage(packageName)
+                    })
+                }
+                status >= PowerManager.THERMAL_STATUS_MODERATE -> {
+                    Log.w(TAG, "Thermal MODERATE — throttling")
+                    isThermallyThrottled = true
+                }
+                else -> {
+                    Log.i(TAG, "Thermal normal — resuming")
+                    isThermallyThrottled = false
+                    drainDeferredTranscripts()
+                }
+            }
+        }.also { powerManager.addThermalStatusListener(it) }
+    }
+
+    private fun drainDeferredTranscripts() {
+        var transcript = deferredTranscripts.poll()
+        while (transcript != null) {
+            handleTranscript(transcript)
+            transcript = deferredTranscripts.poll()
+        }
+    }
 
     // ── Initialization ─────────────────────────────────────────────
 
@@ -183,6 +231,12 @@ class VanceCoreService : Service() {
     }
 
     private fun handleTranscript(transcript: String) {
+        if (isThermallyThrottled) {
+            Log.w(TAG, "Thermally throttled — deferring: \"$transcript\"")
+            deferredTranscripts.offer(transcript)
+            return
+        }
+
         Log.d(TAG, "Processing transcript: \"$transcript\"")
         voicePipeline.setThinking()
 

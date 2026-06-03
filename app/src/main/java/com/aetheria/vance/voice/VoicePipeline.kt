@@ -47,6 +47,7 @@ class VoicePipeline(private val context: Context) {
     private var isTtsReady = false
     private var isInitialized = false
     private val handler = Handler(Looper.getMainLooper())
+    private val recognizerLock = Any()
 
     private var onTranscriptReady: ((String) -> Unit)? = null
     private var onListeningTimeout: (() -> Unit)? = null
@@ -77,7 +78,6 @@ class VoicePipeline(private val context: Context) {
         if (isInitialized) return
         Log.d(TAG, "Initializing VoicePipeline")
         initTextToSpeech()
-        initSpeechRecognizer()
         isInitialized = true
     }
 
@@ -86,9 +86,12 @@ class VoicePipeline(private val context: Context) {
      */
     fun destroy() {
         handler.removeCallbacks(timeoutRunnable)
-        try { speechRecognizer?.destroy() } catch (_: Exception) {}
+        synchronized(recognizerLock) {
+            try { speechRecognizer?.cancel() } catch (_: Exception) {}
+            try { speechRecognizer?.destroy() } catch (_: Exception) {}
+            speechRecognizer = null
+        }
         try { textToSpeech?.stop(); textToSpeech?.shutdown() } catch (_: Exception) {}
-        speechRecognizer = null
         textToSpeech = null
         isInitialized = false
         isTtsReady = false
@@ -112,8 +115,8 @@ class VoicePipeline(private val context: Context) {
         onListeningTimeout = onTimeout
         setState(State.LISTENING)
 
-        if (speechRecognizer == null || !isInitialized) {
-            initialize()
+        synchronized(recognizerLock) {
+            if (speechRecognizer == null) initSpeechRecognizer()
         }
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -137,9 +140,8 @@ class VoicePipeline(private val context: Context) {
 
     fun stopListening() {
         handler.removeCallbacks(timeoutRunnable)
-        try {
-            speechRecognizer?.stopListening()
-        } catch (_: Exception) {}
+        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
         isListening = false
     }
 
@@ -271,7 +273,14 @@ class VoicePipeline(private val context: Context) {
                     SpeechRecognizer.ERROR_NETWORK -> "network error"
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
                     SpeechRecognizer.ERROR_NO_MATCH -> "no speech match"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "recognizer busy"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        Log.w(TAG, "SR busy — destroying and resetting")
+                        synchronized(recognizerLock) {
+                            speechRecognizer?.destroy()
+                            speechRecognizer = null
+                        }
+                        return
+                    }
                     SpeechRecognizer.ERROR_SERVER -> "server error"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "no speech input"
                     else -> "unknown error $error"
