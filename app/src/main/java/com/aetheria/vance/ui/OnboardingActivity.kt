@@ -130,8 +130,8 @@ class OnboardingActivity : ComponentActivity() {
         }
         startService(Intent(this, FloatingOrbService::class.java))
         startService(Intent(this, com.aetheria.vance.voice.WakeWordService::class.java))
-        // Give services time to bind before finishing
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ finish() }, 2000)
+        // Give services plenty of time to bind before finishing
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ finish() }, 5000)
     }
 }
 
@@ -200,12 +200,23 @@ fun OnboardingFlow(
     val viewModel: OnboardingViewModel = hiltViewModel()
 
     // Auto-advance through all pages for hands-free setup
+    val ctx = LocalContext.current
     LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1500)
+        // Start services early while activity is still alive
+        val coreIntent = android.content.Intent(ctx, com.aetheria.vance.core.VanceCoreService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            ctx.startForegroundService(coreIntent)
+        } else {
+            ctx.startService(coreIntent)
+        }
+        ctx.startService(android.content.Intent(ctx, com.aetheria.vance.voice.WakeWordService::class.java))
+        ctx.startService(android.content.Intent(ctx, FloatingOrbService::class.java))
         while (viewModel.currentPage < viewModel.totalPages - 1) {
-            kotlinx.coroutines.delay(1500)
+            kotlinx.coroutines.delay(2000)
             viewModel.nextPage()
         }
-        kotlinx.coroutines.delay(2000)
+        kotlinx.coroutines.delay(5000)
         onComplete()
     }
 
