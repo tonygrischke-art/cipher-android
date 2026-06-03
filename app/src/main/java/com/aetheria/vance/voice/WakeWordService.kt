@@ -194,7 +194,8 @@ class WakeWordService : Service() {
             }
 
             // NNAPI delegate for MediaTek MT6878 NPU acceleration.
-            // Falls back to CPU if NNAPI is unavailable on this device.
+            // Applied to melspectrogram + embedding models only.
+            // hey_jarvis_v0.1.tflite (classifier) uses CPU — CONV_2D ops overflow NNAPI on MT6878.
             val nnApiDelegate = NnApiDelegate(
                 NnApiDelegate.Options().apply {
                     setAllowFp16(true)
@@ -204,14 +205,18 @@ class WakeWordService : Service() {
                 }
             )
 
-            val opts = Interpreter.Options().apply {
+            val nnApiOpts = Interpreter.Options().apply {
                 addDelegate(nnApiDelegate)
                 setNumThreads(1)
             }
 
-            melInterpreter = Interpreter(File(melPath), opts)
-            embeddingInterpreter = Interpreter(File(embPath), opts)
-            wakeWordInterpreter = Interpreter(File(wwPath), opts)
+            val cpuOpts = Interpreter.Options().apply {
+                setNumThreads(1)
+            }
+
+            melInterpreter = Interpreter(File(melPath), nnApiOpts)
+            embeddingInterpreter = Interpreter(File(embPath), nnApiOpts)
+            wakeWordInterpreter = Interpreter(File(wwPath), cpuOpts)
 
             Log.d(TAG, "All openwakeword TFLite models loaded successfully")
             consecutiveFailures.set(0)
