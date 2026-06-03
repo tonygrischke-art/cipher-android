@@ -192,8 +192,10 @@ class WakeWordService : Service() {
                 return false
             }
 
+            // MTK MT6878 workaround: use 1 thread for TFLite CPU delegate stability.
+            // Multi-threaded CPU inference crashes on CONV_2D ops with this chip.
             val opts = Interpreter.Options().apply {
-                setNumThreads(2)
+                setNumThreads(1)
             }
 
             melInterpreter = Interpreter(File(melPath), opts)
