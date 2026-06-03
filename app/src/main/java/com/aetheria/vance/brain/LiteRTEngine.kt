@@ -112,7 +112,6 @@ class LiteRTEngine(
             .setTopK(TOP_K)
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
-            .setAcceleratorName("nnapi")
             .build()
 
         val session = LlmInference.createFromOptions(context, options)
