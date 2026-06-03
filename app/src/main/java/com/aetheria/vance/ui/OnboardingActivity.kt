@@ -198,6 +198,16 @@ fun OnboardingFlow(
 ) {
     val viewModel: OnboardingViewModel = hiltViewModel()
 
+    // Auto-advance through all pages for hands-free setup
+    LaunchedEffect(Unit) {
+        while (viewModel.currentPage < viewModel.totalPages - 1) {
+            kotlinx.coroutines.delay(1500)
+            viewModel.nextPage()
+        }
+        kotlinx.coroutines.delay(2000)
+        onComplete()
+    }
+
     Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
         LinearProgressIndicator(
             progress = { (viewModel.currentPage + 1).toFloat() / viewModel.totalPages },
