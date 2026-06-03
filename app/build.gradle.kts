@@ -125,9 +125,10 @@ dependencies {
     // MediaPipe LiteRT LLM — with NPU delegate support
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
 
-    // NPU: TensorFlow Lite with Neuron delegate
+    // NPU: TensorFlow Lite with NNAPI delegate for MediaTek MT6878
     implementation("org.tensorflow:tensorflow-lite:2.15.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.15.0")
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
     // Neuron delegate — check MediaTek/TensorFlow documentation for exact artifact
     // implementation("org.tensorflow:tensorflow-lite-neuron:2.15.0")  // May vary by SDK version
 

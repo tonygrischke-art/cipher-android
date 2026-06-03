@@ -19,6 +19,7 @@ import android.content.pm.ServiceInfo
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.ui.MainActivity
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -192,9 +193,19 @@ class WakeWordService : Service() {
                 return false
             }
 
-            // MTK MT6878 workaround: use 1 thread for TFLite CPU delegate stability.
-            // Multi-threaded CPU inference crashes on CONV_2D ops with this chip.
+            // NNAPI delegate for MediaTek MT6878 NPU acceleration.
+            // Falls back to CPU if NNAPI is unavailable on this device.
+            val nnApiDelegate = NnApiDelegate(
+                NnApiDelegate.Options().apply {
+                    setAllowFp16(true)
+                    setExecutionPreference(
+                        NnApiDelegate.Options.EXECUTION_PREFERENCE_SUSTAINED_SPEED
+                    )
+                }
+            )
+
             val opts = Interpreter.Options().apply {
+                addDelegate(nnApiDelegate)
                 setNumThreads(1)
             }
 
