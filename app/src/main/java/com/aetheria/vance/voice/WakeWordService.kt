@@ -19,7 +19,6 @@ import android.content.pm.ServiceInfo
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.ui.MainActivity
 import org.tensorflow.lite.Interpreter
-import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -193,34 +192,44 @@ class WakeWordService : Service() {
                 return false
             }
 
-            // NNAPI delegate for MediaTek MT6878 NPU acceleration.
-            // Applied to melspectrogram + embedding models only.
-            // hey_jarvis_v0.1.tflite (classifier) uses CPU — CONV_2D ops overflow NNAPI on MT6878.
-            val nnApiDelegate = NnApiDelegate(
-                NnApiDelegate.Options().apply {
-                    setAllowFp16(true)
-                    setExecutionPreference(
-                        NnApiDelegate.Options.EXECUTION_PREFERENCE_SUSTAINED_SPEED
-                    )
-                }
-            )
-
-            val nnApiOpts = Interpreter.Options().apply {
-                addDelegate(nnApiDelegate)
-                setNumThreads(1)
-            }
+            // MT6878 workaround: use CPU-only for all openwakeword models.
+            // NNAPI and multi-threaded CPU both cause CONV_2D overflow on this chip.
 
             val cpuOpts = Interpreter.Options().apply {
                 setNumThreads(1)
             }
 
-            melInterpreter = Interpreter(File(melPath), nnApiOpts)
-            embeddingInterpreter = Interpreter(File(embPath), nnApiOpts)
-            wakeWordInterpreter = Interpreter(File(wwPath), cpuOpts)
+            // TFLite 2.15.0 can overflow CONV_2D on MT6878 with these openwakeword models.
+            // Load each interpreter individually and log which ones fail.
+            try {
+                melInterpreter = Interpreter(File(melPath), cpuOpts)
+                Log.d(TAG, "melspectrogram ON")
+            } catch (e: Exception) {
+                Log.e(TAG, "melspectrogram FAILED: ${e.message}")
+            }
 
-            Log.d(TAG, "All openwakeword TFLite models loaded successfully")
-            consecutiveFailures.set(0)
-            return true
+            try {
+                embeddingInterpreter = Interpreter(File(embPath), cpuOpts)
+                Log.d(TAG, "embedding ON")
+            } catch (e: Exception) {
+                Log.e(TAG, "embedding FAILED: ${e.message}")
+            }
+
+            try {
+                wakeWordInterpreter = Interpreter(File(wwPath), cpuOpts)
+                Log.d(TAG, "wake_word ON")
+            } catch (e: Exception) {
+                Log.e(TAG, "wake_word FAILED: ${e.message}")
+            }
+
+            val ready = melInterpreter != null && embeddingInterpreter != null && wakeWordInterpreter != null
+            if (ready) {
+                Log.d(TAG, "All openwakeword TFLite models loaded successfully")
+                consecutiveFailures.set(0)
+            } else {
+                Log.w(TAG, "Partial init — some models failed (expect wake word detection disabled)")
+            }
+            return ready
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize TFLite models", e)
             closeTfliteModels()
