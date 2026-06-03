@@ -7,30 +7,31 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
 import android.content.pm.ServiceInfo
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.ui.MainActivity
-import org.tensorflow.lite.Interpreter
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.Locale
 
 /**
- * Foreground service that listens for the wake word "hey jarvis" / "hey vance" using
- * on-device TFLite openwakeword models (melspectrogram + embedding + hey_jarvis_v0.1).
+ * Foreground service that listens for the wake word "hey cipher" using
+ * Android's built-in SpeechRecognizer (on-device if available).
  *
- * Reads 16kHz mono PCM audio via AudioRecord in a background thread, runs mel-spectrogram
- * → embedding → wake-word classifier, and fires ACTION_WAKE_WORD_DETECTED on match.
+ * Uses RecognitionListener to continuously listen for speech and checks
+ * each partial/full result against wake word phrases. On match, fires
+ * ACTION_WAKE_WORD_DETECTED to trigger Vance response.
+ *
+ * No TFLite models needed — avoids MT6878 CONV_2D overflow issue.
  *
  * Includes max-restart counter: stops after 5 consecutive failures.
  */
@@ -43,69 +44,38 @@ class WakeWordService : Service() {
         private const val PREFS_NAME = "cipher_secure_prefs"
         private const val KEY_SENSITIVITY = "wake_word_sensitivity"
 
-        // Audio config
-        private const val SAMPLE_RATE = 16000
-        private const val AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_RECOGNITION
-        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-        private const val BUFFER_SIZE_FRAMES = 1280  // 80ms at 16kHz
-
-        // openwakeword model files in assets/openwakeword/
-        private const val MELSPECTROGRAM_MODEL = "melspectrogram.tflite"
-        private const val EMBEDDING_MODEL = "embedding_model.tflite"
-        private const val WAKEWORD_MODEL = "hey_jarvis_v0.1.tflite"
-
-        // Detection thresholds
-        private const val DEFAULT_THRESHOLD = 0.5f
+        // Detection
         private const val COOLDOWN_MS = 2000L
-
-        // Max consecutive failures before giving up
         private const val MAX_CONSECUTIVE_FAILURES = 5
+        private const val SILENCE_RESTART_MS = 3000L  // restart listen after 3s of no speech
 
-        // Wake word variants for "hey vance" phonetic matches
-        // (The TFLite model detects "hey jarvis"; we also accept "hey vance"
-        //  phonetic variants via post-processing on embedding similarity.)
-        private val WAKE_WORD_VARIANTS = listOf(
-            "hey vance", "hey vawns", "hey vans", "hey voice",
-            "hey lance", "hey dance", "hey vaughn", "hey vaunce",
-            "hay vance", "hay vawns", "hay vans",
-            "a vance", "vance", "vants",
-            "hey jarvis", "hey jarvas", "hey travis"
+        // Wake word phrases to detect (lowercased)
+        private val WAKE_PHRASES = listOf(
+            "hey cipher", "hey cypher",
+            "hi cipher", "hi cypher",
+            "cipher", "cypher",
+            "hey vance", "hi vance", "vance"
         )
     }
 
-    private var audioRecord: AudioRecord? = null
-    private var audioThread: Thread? = null
+    private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
-    private var sensitivity = 0.5f
     private var lastDetectionTime = 0L
-
-    // TFLite interpreters
-    private var melInterpreter: Interpreter? = null
-    private var embeddingInterpreter: Interpreter? = null
-    private var wakeWordInterpreter: Interpreter? = null
-
-    // Rolling audio buffer (16kHz, 30s ring)
-    private val audioBuffer = ShortArray(SAMPLE_RATE * 30)
-    private var audioBufferPos = 0
-
-    // Consecutive failure counter
-    private val consecutiveFailures = AtomicInteger(0)
+    private var consecutiveFailures = 0
+    private val handler = Handler(Looper.getMainLooper())
+    private var restartPending = false
+    private var sensitivity = 0.5f
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "WakeWordService created")
         createNotificationChannel()
-        startForeground()
+        startForeground(withMicrophone = false)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "WakeWordService started")
         if (!isListening) {
-            if (!initializeTfliteModels()) {
-                Log.e(TAG, "Failed to initialize TFLite models, cannot start listening")
-                return START_NOT_STICKY
-            }
             startListening()
         }
         return START_STICKY
@@ -113,7 +83,6 @@ class WakeWordService : Service() {
 
     override fun onDestroy() {
         stopListening()
-        closeTfliteModels()
         super.onDestroy()
         Log.d(TAG, "WakeWordService destroyed")
     }
@@ -131,13 +100,13 @@ class WakeWordService : Service() {
     private fun startForeground(withMicrophone: Boolean = false) {
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Vance")
             .setContentText(
-                if (withMicrophone) "Wake word listener active — say \"Hey Vance\""
-                else "Vance standby"
+                if (withMicrophone) "Listening — say \"Hey Cipher\""
+                else "Vance standby — say \"Hey Cipher\""
             )
             .setSmallIcon(R.drawable.cipher_orb)
             .setContentIntent(pendingIntent)
@@ -154,246 +123,166 @@ class WakeWordService : Service() {
         }
     }
 
-    // ── TFLite model management ──────────────────────────────────────────
-
-    /**
-     * Copy a model from assets/openwakeword/ to a local file and return its path.
-     * TFLite Interpreter needs a real file path, not an asset InputStream.
-     */
-    private fun copyAssetToFile(assetName: String): String? {
-        return try {
-            val outFile = File(cacheDir, assetName)
-            // Only copy if not already present (models don't change)
-            if (!outFile.exists()) {
-                assets.open("openwakeword/$assetName").use { input ->
-                    FileOutputStream(outFile).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                Log.d(TAG, "Copied asset $assetName → ${outFile.absolutePath}")
-            }
-            outFile.absolutePath
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to copy asset $assetName", e)
-            null
-        }
-    }
-
-    private fun initializeTfliteModels(): Boolean {
-        sensitivity = getSensitivity()
-
-        try {
-            val melPath = copyAssetToFile(MELSPECTROGRAM_MODEL)
-            val embPath = copyAssetToFile(EMBEDDING_MODEL)
-            val wwPath = copyAssetToFile(WAKEWORD_MODEL)
-
-            if (melPath == null || embPath == null || wwPath == null) {
-                Log.e(TAG, "One or more openwakeword models missing from assets")
-                return false
-            }
-
-            // MT6878 workaround: use CPU-only for all openwakeword models.
-            // NNAPI and multi-threaded CPU both cause CONV_2D overflow on this chip.
-
-            val cpuOpts = Interpreter.Options().apply {
-                setNumThreads(1)
-            }
-
-            // TFLite 2.15.0 can overflow CONV_2D on MT6878 with these openwakeword models.
-            // Load each interpreter individually and log which ones fail.
-            try {
-                melInterpreter = Interpreter(File(melPath), cpuOpts)
-                Log.d(TAG, "melspectrogram ON")
-            } catch (e: Exception) {
-                Log.e(TAG, "melspectrogram FAILED: ${e.message}")
-            }
-
-            try {
-                embeddingInterpreter = Interpreter(File(embPath), cpuOpts)
-                Log.d(TAG, "embedding ON")
-            } catch (e: Exception) {
-                Log.e(TAG, "embedding FAILED: ${e.message}")
-            }
-
-            try {
-                wakeWordInterpreter = Interpreter(File(wwPath), cpuOpts)
-                Log.d(TAG, "wake_word ON")
-            } catch (e: Exception) {
-                Log.e(TAG, "wake_word FAILED: ${e.message}")
-            }
-
-            val ready = melInterpreter != null && embeddingInterpreter != null && wakeWordInterpreter != null
-            if (ready) {
-                Log.d(TAG, "All openwakeword TFLite models loaded successfully")
-                consecutiveFailures.set(0)
-            } else {
-                Log.w(TAG, "Partial init — some models failed (expect wake word detection disabled)")
-            }
-            return ready
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize TFLite models", e)
-            closeTfliteModels()
-            return false
-        }
-    }
-
-    private fun closeTfliteModels() {
-        try { melInterpreter?.close() } catch (_: Exception) {}
-        try { embeddingInterpreter?.close() } catch (_: Exception) {}
-        try { wakeWordInterpreter?.close() } catch (_: Exception) {}
-        melInterpreter = null
-        embeddingInterpreter = null
-        wakeWordInterpreter = null
-    }
-
-    // ── Audio capture + inference loop ───────────────────────────────────
+    // ── Speech-based wake word detection ────────────────────────────────
 
     private fun startListening() {
-        // Upgrade FGS to include microphone
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(withMicrophone = true)
-        }
+        sensitivity = getSensitivity()
 
-        val minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        if (minBufSize == AudioRecord.ERROR || minBufSize == AudioRecord.ERROR_BAD_VALUE) {
-            Log.e(TAG, "AudioRecord.getMinBufferSize failed")
-            handleFailure("AudioRecord buffer size error")
-            return
+        // Create SpeechRecognizer on main thread (required)
+        handler.post {
+            try {
+                if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+                    Log.e(TAG, "SpeechRecognizer not available on this device")
+                    handleFailure("SpeechRecognizer unavailable")
+                    return@post
+                }
+
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                    setRecognitionListener(createRecognitionListener())
+                }
+
+                startListeningSession()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create SpeechRecognizer", e)
+                handleFailure("SpeechRecognizer creation failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun startListeningSession() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.US.toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)  // get partial transcripts
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
 
         try {
-            audioRecord = AudioRecord(
-                AUDIO_SOURCE, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT,
-                maxOf(minBufSize, BUFFER_SIZE_FRAMES * 2)
-            )
+            speechRecognizer?.startListening(intent)
+            isListening = true
+            Log.d(TAG, "Listening session started — say \"Hey Cipher\"")
         } catch (e: Exception) {
-            Log.e(TAG, "AudioRecord creation failed", e)
-            handleFailure("AudioRecord creation failed")
-            return
+            Log.e(TAG, "startListening failed", e)
+            handleFailure("startListening failed: ${e.message}")
         }
-
-        if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord not initialized after creation")
-            handleFailure("AudioRecord not initialized")
-            return
-        }
-
-        isListening = true
-        audioRecord?.startRecording()
-
-        audioThread = Thread({ audioLoop() }, "WakeWordAudio").apply {
-            isDaemon = true
-            start()
-        }
-
-        Log.d(TAG, "Wake word listener started — TFLite openwakeword, 16kHz mono PCM")
     }
 
-    private fun audioLoop() {
-        val buffer = ShortArray(BUFFER_SIZE_FRAMES)
-        val byteBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE_FRAMES * 4)  // float32
-        byteBuffer.order(ByteOrder.nativeOrder())
+    private fun createRecognitionListener(): RecognitionListener {
+        return object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                Log.d(TAG, "Ready for speech")
+                isListening = true
+            }
 
-        // Mel-spectrogram output size: 32 mel bins × 76 frames (for 1280 samples at 16kHz)
-        val melOutputSize = 32 * 76
-        val melOutput = Array(1) { FloatArray(melOutputSize) }
+            override fun onBeginningOfSpeech() {
+                Log.d(TAG, "Speech beginning")
+            }
 
-        // Embedding output size: 96 dimensions (openwakeword default)
-        val embeddingSize = 96
-        val embeddingOutput = Array(1) { FloatArray(embeddingSize) }
+            override fun onRmsChanged(rmsdB: Float) {}
 
-        // Wake word classifier output: single score [0..1]
-        val wwOutput = Array(1) { FloatArray(1) }
+            override fun onBufferReceived(buffer: ByteArray?) {}
 
-        while (isListening) {
-            try {
-                val read = audioRecord?.read(buffer, 0, BUFFER_SIZE_FRAMES) ?: 0
-                if (read <= 0) {
-                    Log.w(TAG, "AudioRecord.read returned $read")
-                    continue
+            override fun onEndOfSpeech() {
+                Log.d(TAG, "Speech ended — scheduling restart")
+                scheduleRestart()
+            }
+
+            override fun onError(error: Int) {
+                val msg = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "audio error"
+                    SpeechRecognizer.ERROR_CLIENT -> "client error"
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "no mic permission"
+                    SpeechRecognizer.ERROR_NETWORK -> "network error"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
+                    SpeechRecognizer.ERROR_NO_MATCH -> "no match"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "busy"
+                    SpeechRecognizer.ERROR_SERVER -> "server error"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "speech timeout"
+                    else -> "unknown ($error)"
                 }
+                Log.w(TAG, "Recognition error: $msg")
 
-                // Store in rolling buffer for debugging / re-processing
-                synchronized(audioBuffer) {
-                    for (i in 0 until read) {
-                        audioBuffer[audioBufferPos] = buffer[i]
-                        audioBufferPos = (audioBufferPos + 1) % audioBuffer.size
-                    }
-                }
-
-                // Convert int16 → float32 normalized to [-1, 1]
-                byteBuffer.clear()
-                for (i in 0 until read) {
-                    byteBuffer.putFloat(buffer[i].toFloat() / 32768f)
-                }
-                byteBuffer.rewind()
-                val inputAudio = Array(1) { FloatArray(read) }
-                for (i in 0 until read) {
-                    inputAudio[0][i] = buffer[i].toFloat() / 32768f
-                }
-
-                // Step 1: Mel-spectrogram
-                val mel = melInterpreter
-                if (mel == null) continue
-                try {
-                    mel.run(inputAudio, melOutput)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Mel-spectrogram inference error", e)
-                    continue
-                }
-
-                // Step 2: Embedding
-                val emb = embeddingInterpreter
-                if (emb == null) continue
-                try {
-                    emb.run(melOutput, embeddingOutput)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Embedding inference error", e)
-                    continue
-                }
-
-                // Step 3: Wake word classifier
-                val ww = wakeWordInterpreter
-                if (ww == null) continue
-                try {
-                    ww.run(embeddingOutput, wwOutput)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Wake word classifier inference error", e)
-                    continue
-                }
-
-                val score = wwOutput[0][0]
-                val threshold = (1.0f - sensitivity) * DEFAULT_THRESHOLD
-
-                if (score > threshold) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastDetectionTime > COOLDOWN_MS) {
-                        lastDetectionTime = now
-                        consecutiveFailures.set(0)
-                        Log.i(TAG, "Wake word detected! score=$score threshold=$threshold")
-                        onWakeWordDetected(score)
-                    }
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in audio loop", e)
-                if (handleFailure("Audio loop error: ${e.message}")) {
-                    break  // MAX_CONSECUTIVE_FAILURES reached — stop
+                // Recoverable errors: voice_code=1,2,3,5,6,8 (no match, server, speech timeout)
+                // Non-recoverable: 4 (insufficient_permissions)
+                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                    handleFailure("Mic permission denied")
+                } else {
+                    // These happen at end of session — just restart
+                    isListening = false
+                    scheduleRestart()
                 }
             }
-        }
 
-        Log.d(TAG, "Audio loop exited")
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (matches != null) {
+                    for (match in matches) {
+                        Log.d(TAG, "Result: \"$match\"")
+                        checkWakePhrase(match)
+                    }
+                }
+                isListening = false
+                scheduleRestart()
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (matches != null) {
+                    for (match in matches) {
+                        Log.d(TAG, "Partial: \"$match\"")
+                        checkWakePhrase(match)
+                    }
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        }
     }
 
-    /**
-     * Handle a failure. Returns true if MAX_CONSECUTIVE_FAILURES reached (caller should stop).
-     */
+    private fun checkWakePhrase(transcript: String) {
+        val lower = transcript.lowercase(Locale.US).trim()
+        for (phrase in WAKE_PHRASES) {
+            if (lower.contains(phrase)) {
+                val now = System.currentTimeMillis()
+                if (now - lastDetectionTime > COOLDOWN_MS) {
+                    lastDetectionTime = now
+                    consecutiveFailures = 0
+                    Log.i(TAG, "WAKE WORD DETECTED! \"$transcript\" → matched \"$phrase\"")
+                    onWakeWordDetected(phrase)
+                }
+                return
+            }
+        }
+    }
+
+    private fun scheduleRestart() {
+        if (restartPending) return
+        restartPending = true
+        handler.postDelayed({
+            restartPending = false
+            if (isServiceRunning()) {
+                Log.d(TAG, "Restarting listening session")
+                try {
+                    startListeningSession()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Restart failed", e)
+                    handleFailure("Restart failed: ${e.message}")
+                }
+            }
+        }, 200L)  // brief pause before restart
+    }
+
+    private fun isServiceRunning(): Boolean {
+        return speechRecognizer != null
+    }
+
     private fun handleFailure(reason: String): Boolean {
-        val count = consecutiveFailures.incrementAndGet()
-        Log.e(TAG, "Failure #$count: $reason")
-        if (count >= MAX_CONSECUTIVE_FAILURES) {
-            Log.e(TAG, "MAX_CONSECUTIVE_FAILURES ($MAX_CONSECUTIVE_FAILURES) reached — stopping service")
+        consecutiveFailures++
+        Log.e(TAG, "Failure #$consecutiveFailures: $reason")
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            Log.e(TAG, "MAX_CONSECUTIVE_FAILURES reached — stopping service")
             stopListening()
             stopSelf()
             return true
@@ -403,21 +292,19 @@ class WakeWordService : Service() {
 
     private fun stopListening() {
         isListening = false
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
-        audioRecord = null
-        try { audioThread?.join(1000) } catch (_: Exception) {}
-        audioThread = null
-        Log.d(TAG, "Wake word listener stopped")
+        handler.removeCallbacksAndMessages(null)
+        try { speechRecognizer?.stopListening() } catch (_: Exception) {}
+        try { speechRecognizer?.cancel() } catch (_: Exception) {}
+        try { speechRecognizer?.destroy() } catch (_: Exception) {}
+        speechRecognizer = null
+        Log.d(TAG, "Listener stopped")
     }
 
-    private fun onWakeWordDetected(confidence: Float) {
-        val intent = Intent(this, VanceCoreService::class.java).apply {
-            action = VanceCoreService.ACTION_WAKE_WORD_DETECTED
-            putExtra("wake_word", "hey_vance")
-            putExtra("confidence", confidence)
-        }
-        startService(intent)
+    private fun onWakeWordDetected(phrase: String) {
+        sendBroadcast(Intent(VanceCoreService.ACTION_WAKE_WORD_DETECTED).apply {
+            setPackage(packageName)
+            putExtra("wake_word", phrase)
+        })
     }
 
     private fun getSensitivity(): Float {
