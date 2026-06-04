@@ -124,9 +124,7 @@ class OnboardingActivity : ComponentActivity() {
         // Services are already started by the LaunchedEffect in OnboardingFlow.
         // Launch the main chat activity and finish onboarding.
         try {
-            val intent = Intent(this, VanceChatActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            }
+            val intent = Intent(this, VanceChatActivity::class.java)
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch VanceChatActivity", e)
