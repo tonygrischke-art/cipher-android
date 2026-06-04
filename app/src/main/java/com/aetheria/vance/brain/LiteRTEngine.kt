@@ -27,7 +27,8 @@ import java.io.File
  */
 class LiteRTEngine(
     private val context: android.content.Context,
-    private val modelDir: String = context.getExternalFilesDir(null)?.absolutePath + "/cipher_models/"
+    private val modelDir: String = context.getExternalFilesDir(null)?.absolutePath + "/cipher_models/",
+    private val npuBridge: NpuBridge? = null
 ) {
 
     companion object {
@@ -58,13 +59,7 @@ class LiteRTEngine(
 
     private val sessions = mutableMapOf<ModelSlot, LlmInference>()
 
-    // Only construct NpuBridge if the native lib loaded successfully
-    private val npuBridge: NpuBridge? = if (NpuBridge.nativeLibAvailable) {
-        NpuBridge(context)
-    } else {
-        Log.w(TAG, "NpuBridge.nativeLibAvailable=false — skipping NPU, using Groq fallback")
-        null
-    }
+    // NpuBridge is injected by Hilt via AppModule. May be null if NPU is unavailable.
     private var npuAvailable = false
     private var npuInitAttempted = false
 
@@ -73,7 +68,7 @@ class LiteRTEngine(
         // NPU init is deferred to first actual use (generate/tryNpuInference).
         // This prevents kernel panic on MT6878 when Hilt constructs the singleton
         // during app startup — the NPU driver may not be ready at that point.
-        Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (nativeLibAvailable=${NpuBridge.nativeLibAvailable})")
+        Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (npuBridge=${if (npuBridge != null) "injected" else "null"})")
     }
 
     /**
@@ -88,7 +83,8 @@ class LiteRTEngine(
             return false
         }
         try {
-            npuAvailable = npuBridge.initialize()
+            // Safe: npuBridge.initialize() calls nativeInit() which dlopen's lazily
+            npuAvailable = npuBridge.initialize() && npuBridge.initNpu()
             Log.i(TAG, "NPU lazy initialization result: $npuAvailable")
         } catch (e: Exception) {
             Log.e(TAG, "NPU initialization failed with exception — NPU unavailable", e)
@@ -245,7 +241,7 @@ class LiteRTEngine(
             try { session.close() } catch (e: Exception) { Log.w(TAG, "Error closing ${slot.name}", e) }
         }
         sessions.clear()
-        npuBridge?.shutdown()
+        npuBridge?.shutdownNpu()
     }
 
     private fun estimateTokens(text: String): Int {
