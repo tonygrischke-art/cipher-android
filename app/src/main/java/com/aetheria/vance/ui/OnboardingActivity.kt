@@ -122,8 +122,16 @@ class OnboardingActivity : ComponentActivity() {
 
     private fun proceedToMain() {
         // Services are already started by the LaunchedEffect in OnboardingFlow.
-        // Just finish the activity after a delay to let them bind.
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ finish() }, 5000)
+        // Launch the main chat activity and finish onboarding.
+        try {
+            val intent = Intent(this, VanceChatActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch VanceChatActivity", e)
+        }
+        finish()
     }
 }
 
