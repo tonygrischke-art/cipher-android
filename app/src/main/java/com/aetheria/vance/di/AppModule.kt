@@ -8,6 +8,7 @@ import com.aetheria.vance.actions.SystemSettingHandler
 import com.aetheria.vance.brain.BrainRouter
 import com.aetheria.vance.brain.GroqClient
 import com.aetheria.vance.brain.LiteRTEngine
+import com.aetheria.vance.brain.NpuBridge
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.context.RoutineEngine
@@ -32,8 +33,22 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideLiteRTEngine(@ApplicationContext context: Context): LiteRTEngine {
-        return LiteRTEngine(context)
+    fun provideNpuBridge(): NpuBridge {
+        return NpuBridge()
+    }
+
+    @Provides
+    @Singleton
+    fun provideLiteRTEngine(
+        @ApplicationContext context: Context,
+        npuBridge: NpuBridge
+    ): LiteRTEngine {
+        // initialize() is safe — never crashes. Returns false if NPU unavailable.
+        val npuReady = npuBridge.initialize()
+        return LiteRTEngine(
+            context = context,
+            npuBridge = if (npuReady) npuBridge else null
+        )
     }
 
     @Provides
