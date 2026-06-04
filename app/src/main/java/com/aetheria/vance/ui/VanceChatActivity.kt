@@ -43,6 +43,7 @@ import com.aetheria.vance.voice.VoicePipeline
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -100,7 +101,7 @@ class CipherChatViewModel @Inject constructor(
     }
 
     private fun loadHistory() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val recent = memoryStore.getRecentExchanges(50)
             val msgs = recent.map { entity ->
                 ChatMessage(
