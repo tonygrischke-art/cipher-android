@@ -1,129 +1,106 @@
 package com.aetheria.vance.brain
 
-import android.content.Context
 import android.util.Log
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/**
- * JNI bridge to MediaTek Neuron Adapter (libneuron_adapter_mgvi.so).
- *
- * This class provides direct NPU access for TFLite/LiteRT model inference,
- * bypassing NNAPI entirely for maximum performance on MT6878.
- *
- * CRASH FIX: The companion init block now catches UnsatisfiedLinkError and
- * sets `nativeLibAvailable = false`. Callers MUST check this flag before
- * constructing NpuBridge or calling any native method.
- */
-class NpuBridge(private val context: Context) {
+private const val TAG = "NpuBridge"
 
-    companion object {
-        private const val TAG = "NpuBridge"
-
-        /**
-         * Set to true only if System.loadLibrary("vance_npu") succeeded.
-         * If false, native methods will throw UnsatisfiedLinkError — do NOT
-         * call them or construct NpuBridge at all.
-         */
-        @JvmStatic
-        var nativeLibAvailable = false
-            private set
-
-        // Library paths to try (in order of preference)
-        private val NEURON_LIB_PATHS = listOf(
-            "/vendor/lib64/libneuron_adapter_mgvi.so",
-            "/system/lib64/libneuron_adapter_mgvi.so",
-            "/vendor/lib/libneuron_adapter_mgvi.so"
-        )
-
-        init {
-            try {
-                System.loadLibrary("vance_npu")
-                nativeLibAvailable = true
-                Log.d(TAG, "Native library loaded: libvance_npu.so")
-            } catch (e: UnsatisfiedLinkError) {
-                nativeLibAvailable = false
-                Log.e(TAG, "Failed to load native library libvance_npu.so — NPU unavailable", e)
-            }
-        }
-    }
-
-    private var initialized = false
+@Singleton
+class NpuBridge @Inject constructor() {
 
     /**
-     * Initialize the NPU bridge by loading libneuron_adapter_mgvi.so
-     * and resolving required symbols.
-     *
-     * @return true if NPU is available and ready
+     * True only after [initialize] succeeds.
+     * Every caller MUST check this before invoking any native method.
+     * Fixes the silent-fail bug: previously isAvailable() checked `initialized`
+     * (set optimistically) rather than whether the library actually loaded.
+     */
+    var isAvailable: Boolean = false
+        private set
+
+    /**
+     * Attempt to load libvance_npu.so via the safe dlopen path in npu_loader.
+     * Idempotent — safe to call multiple times.
+     * Must be called before any other method on this class.
      */
     fun initialize(): Boolean {
-        if (!nativeLibAvailable) {
-            Log.w(TAG, "nativeLibAvailable=false, cannot initialize NPU")
-            return false
+        if (isAvailable) return true
+        isAvailable = try {
+            nativeInit()
+        } catch (e: UnsatisfiedLinkError) {
+            // npu_loader.so itself is missing from the APK — build misconfiguration.
+            Log.e(TAG, "npu_loader.so not found in APK: ${e.message}")
+            false
+        } catch (e: Throwable) {
+            Log.e(TAG, "nativeInit threw unexpectedly: ${e.message}")
+            false
         }
-        if (initialized) return true
-
-        // Check if any Neuron library path exists
-        val libExists = NEURON_LIB_PATHS.any { path ->
-            java.io.File(path).exists().also { exists ->
-                if (exists) Log.d(TAG, "Found Neuron adapter at: $path")
-            }
-        }
-
-        if (!libExists) {
-            Log.w(TAG, "No Neuron adapter found. NPU unavailable.")
-            return false
-        }
-
-        initialized = nativeInitNpu()
-        Log.i(TAG, "NPU initialization result: $initialized")
-        return initialized
+        Log.i(TAG, "NPU initialize result: $isAvailable")
+        return isAvailable
     }
 
-    /**
-     * Check if NPU is available without initializing.
-     */
-    fun isAvailable(): Boolean = initialized
+    fun initNpu(): Boolean {
+        if (!isAvailable) return false
+        return try {
+            nativeInitNpu()
+        } catch (e: Throwable) {
+            Log.e(TAG, "nativeInitNpu failed: ${e.message}")
+            false
+        }
+    }
 
-    /**
-     * Run inference on the NPU.
-     *
-     * @param modelPath Absolute path to the TFLite/LiteRT model file
-     * @param inputText Input text/prompt for the model
-     * @return Generated text, or error string prefixed with "NPU_"
-     */
+    fun shutdownNpu() {
+        if (!isAvailable) return
+        try { nativeShutdownNpu() }
+        catch (e: Throwable) { Log.e(TAG, "nativeShutdownNpu failed: ${e.message}") }
+        try { nativeRelease() }
+        catch (e: Throwable) { Log.e(TAG, "nativeRelease failed: ${e.message}") }
+        isAvailable = false
+    }
+
+    fun isNpuAvailable(): Boolean {
+        if (!isAvailable) return false
+        return try { nativeIsNpuAvailable() }
+        catch (e: Throwable) { false }
+    }
+
     fun runInference(modelPath: String, inputText: String): String {
-        if (!initialized) {
-            Log.w(TAG, "NPU not initialized, cannot run inference")
-            return "NPU_NOT_INITIALIZED"
-        }
-
-        val startTime = System.currentTimeMillis()
-        val result = nativeRunInference(modelPath, inputText)
-        val elapsed = System.currentTimeMillis() - startTime
-
-        Log.d(TAG, "NPU inference completed in ${elapsed}ms")
-        return result
-    }
-
-    /**
-     * Get the last error message from native layer.
-     */
-    fun getLastError(): String = nativeGetLastError()
-
-    /**
-     * Shutdown the NPU bridge and free resources.
-     */
-    fun shutdown() {
-        if (initialized) {
-            nativeShutdownNpu()
-            initialized = false
-            Log.i(TAG, "NPU bridge shutdown")
+        check(isAvailable) { "NPU not initialized — call initialize() first" }
+        return try { nativeRunInference(modelPath, inputText) }
+        catch (e: Throwable) {
+            Log.e(TAG, "nativeRunInference failed: ${e.message}")
+            ""
         }
     }
 
-    // Native methods — only safe to call if nativeLibAvailable == true
+    fun getLastError(): String {
+        if (!isAvailable) return "NPU library not loaded"
+        return try { nativeGetLastError() }
+        catch (e: Throwable) { "getLastError failed: ${e.message}" }
+    }
+
+    // ── Native declarations ─────────────────────────────────────────────────
+    // nativeInit / nativeRelease — implemented in npu_loader.cpp (always safe)
+    // All others — implemented in libvance_npu.so, resolved after nativeInit()
+
+    private external fun nativeInit(): Boolean
+    private external fun nativeRelease()
+
     private external fun nativeInitNpu(): Boolean
     private external fun nativeShutdownNpu()
     private external fun nativeIsNpuAvailable(): Boolean
     private external fun nativeRunInference(modelPath: String, inputText: String): String
     private external fun nativeGetLastError(): String
+
+    companion object {
+        init {
+            // npu_loader.so: always in APK, zero Neuron deps, never crashes.
+            // libvance_npu.so is loaded lazily inside nativeInit() only.
+            try {
+                System.loadLibrary("npu_loader")
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "FATAL: npu_loader.so missing from APK: ${e.message}")
+            }
+        }
+    }
 }
