@@ -40,3 +40,12 @@ target_link_options(vance_npu PRIVATE
     -Wl,--gc-sections
     -Wl,-s
 )
+
+# Thin loader stub — no Neuron dependencies, always safe to dlopen.
+add_library(npu_loader SHARED npu_loader.cpp)
+
+target_link_libraries(npu_loader
+    android
+    log
+    dl          # required for dlopen / dlsym / dlclose
+)
