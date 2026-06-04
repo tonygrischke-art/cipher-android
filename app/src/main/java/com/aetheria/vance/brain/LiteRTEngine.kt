@@ -22,8 +22,7 @@ import java.io.File
  *   - Falls back to CPU delegate if NPU compilation fails
  *   - Falls back to Groq if local models are unavailable
  *
- * CRASH FIX: Checks NpuBridge.nativeLibAvailable before constructing NpuBridge.
- * If the native lib failed to load, skips NPU entirely → goes straight to Groq fallback.
+ * CRASH FIX: NpuBridge is injected by Hilt. If null or !isAvailable, skips NPU → Groq fallback.
  */
 class LiteRTEngine(
     private val context: android.content.Context,
