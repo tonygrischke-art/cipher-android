@@ -231,6 +231,48 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Model Status Section
+        SectionHeader("Models")
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            val modelDir = java.io.File("/data/local/tmp/cipher_models")
+            val models = listOf(
+                Triple("mobile_actions_q8_ekv1024.litertlm", "Action model", "✅"),
+                Triple("gemma-3n-E2B-it-int4.litertlm", "Reasoning model", "✅"),
+                Triple("vibethinker-1.5b.litertlm", "Coding model (VibeThinker-1.5B)", "⏳"),
+                Triple("gemma-4-E2B-vision.litertlm", "Vision model (Gemma 4 E2B)", "⏳")
+            )
+            models.forEach { (fileName, label, defaultIcon) ->
+                val file = java.io.File(modelDir, fileName)
+                val (icon, status) = if (file.exists()) {
+                    val sizeMB = file.length() / 1024 / 1024
+                    "✅" to "loaded (${sizeMB}MB)"
+                } else {
+                    "⏳" to "not downloaded"
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(icon, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(status, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Download missing models from Settings > Download Models",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Capabilities Section
         SectionHeader("Capabilities")
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -295,8 +337,24 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            if (viewModel.groqApiKey.isBlank()) {
+                Text(
+                    text = "Not set — cloud fallback disabled",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Text(
+                    text = "Groq API key is set — cloud fallback enabled",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
-                text = "Wake word detection uses openWakeWord (on-device, no API key).",
+                text = "Wake word detection uses on-device recognition (no API key needed).",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

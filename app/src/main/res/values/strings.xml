@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vance</string>
+    <string name="app_name">Cipher</string>
     <string name="accessibility_service_description">
         Vance uses Accessibility Service to see and interact with your apps.
         This allows voice-controlled app navigation, screen reading, and UI interaction.
