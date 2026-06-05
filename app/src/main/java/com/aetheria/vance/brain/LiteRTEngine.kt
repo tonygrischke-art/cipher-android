@@ -26,7 +26,7 @@ import java.io.File
  */
 class LiteRTEngine(
     private val context: android.content.Context,
-    private val modelDir: String = context.getExternalFilesDir(null)?.absolutePath + "/cipher_models/",
+    private val modelDir: String = "/data/local/tmp/cipher_models/",
     private val npuBridge: NpuBridge? = null
 ) {
 
