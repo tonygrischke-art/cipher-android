@@ -43,8 +43,10 @@ class LiteRTEngine(
     }
 
     enum class ModelSlot(val fileName: String) {
-        ACTION(ACTION_MODEL),
-        REASONING(REASONING_MODEL)
+        ACTION("mobile_actions_q8_ekv1024.litertlm"),
+        REASONING("gemma-3n-E2B-it-int4.litertlm"),
+        CODING("vibethinker-1.5b.litertlm"),      // abliterated coding model
+        VISION("gemma-4-E2B-vision.litertlm")      // image/video understanding
     }
 
     enum class ComputeBackend { NPU, CPU, GPU, UNAVAILABLE }
