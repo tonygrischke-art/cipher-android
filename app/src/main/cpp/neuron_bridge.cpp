@@ -31,6 +31,12 @@ typedef int32_t NeuronMemory;
 #define NEURON_OUT_OF_MEMORY 1
 #define NEURON_INCOMPLETE 2
 #define NEURON_UNEXPECTED_NULL 3
+struct NeuronModel;
+struct NeuronCompilation;
+struct NeuronExecution;
+struct NeuronMemory;
+
+// Return codes
 #define NEURON_BAD_DATA 4
 #define NEURON_OP_FAILED 5
 #define NEURON_UNMAPPABLE 5
