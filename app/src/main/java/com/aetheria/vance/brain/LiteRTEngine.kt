@@ -77,8 +77,8 @@ class LiteRTEngine(
     private fun ensureNpuInitialized(): Boolean {
         if (npuInitAttempted) return npuAvailable
         npuInitAttempted = true
-        if (npuBridge == null) {
-            Log.w(TAG, "NpuBridge not available, skipping NPU init")
+        if (npuBridge == null || !NpuBridge.nativeLibAvailable) {
+            Log.w(TAG, "NpuBridge not available")
             return false
         }
         try {

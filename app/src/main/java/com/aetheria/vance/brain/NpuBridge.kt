@@ -24,6 +24,10 @@ class NpuBridge @Inject constructor() {
      * Must be called before any other method on this class.
      */
     fun initialize(): Boolean {
+        if (!nativeLibAvailable) {
+            Log.w(TAG, "NPU library not available — skipping init")
+            return false
+        }
         if (isAvailable) return true
         isAvailable = try {
             nativeInit()
@@ -93,13 +97,20 @@ class NpuBridge @Inject constructor() {
     private external fun nativeGetLastError(): String
 
     companion object {
+        @Volatile
+        var nativeLibAvailable: Boolean = false
+            private set
+
         init {
-            // npu_loader.so: always in APK, zero Neuron deps, never crashes.
-            // libvance_npu.so is loaded lazily inside nativeInit() only.
-            try {
+            nativeLibAvailable = try {
                 System.loadLibrary("npu_loader")
+                true
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "FATAL: npu_loader.so missing from APK: ${e.message}")
+                Log.e(TAG, "npu_loader.so not found — NPU disabled: ${e.message}")
+                false
+            } catch (e: Throwable) {
+                Log.e(TAG, "Unexpected error loading npu_loader: ${e.message}")
+                false
             }
         }
     }
