@@ -167,7 +167,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.navigationBars)
+            .windowInsetsPadding(WindowInsets.systemBars)
             .verticalScroll(rememberScrollState())
     ) {
         // Top bar

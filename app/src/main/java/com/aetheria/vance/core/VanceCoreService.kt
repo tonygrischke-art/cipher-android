@@ -13,6 +13,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
@@ -21,6 +22,7 @@ import com.aetheria.vance.brain.BrainRouter
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.notifications.VanceNotificationListener
+import com.aetheria.vance.ui.FloatingOrbService
 import com.aetheria.vance.ui.MainActivity
 import com.aetheria.vance.voice.VoicePipeline
 import com.aetheria.vance.voice.WakeWordService

@@ -188,7 +188,7 @@ fun CipherChatScreen() {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
         // Top bar
         Row(
             modifier = Modifier

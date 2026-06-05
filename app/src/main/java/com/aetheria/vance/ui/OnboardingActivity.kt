@@ -242,7 +242,7 @@ fun OnboardingFlow(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
+    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
         LinearProgressIndicator(
             progress = { (viewModel.currentPage + 1).toFloat() / viewModel.totalPages },
             modifier = Modifier
