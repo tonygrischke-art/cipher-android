@@ -197,21 +197,38 @@ class WakeWordService : Service() {
                     SpeechRecognizer.ERROR_NETWORK -> "network error"
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "network timeout"
                     SpeechRecognizer.ERROR_NO_MATCH -> "no match"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "busy"
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "recognizer busy"
                     SpeechRecognizer.ERROR_SERVER -> "server error"
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "speech timeout"
                     else -> "unknown ($error)"
                 }
                 Log.w(TAG, "Recognition error: $msg")
 
-                // Recoverable errors: voice_code=1,2,3,5,6,8 (no match, server, speech timeout)
-                // Non-recoverable: 4 (insufficient_permissions)
-                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                    handleFailure("Mic permission denied")
-                } else {
-                    // These happen at end of session — just restart
-                    isListening = false
-                    scheduleRestart()
+                isListening = false
+
+                when (error) {
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                        handleFailure("Mic permission denied")
+                    }
+                    SpeechRecognizer.ERROR_CLIENT,
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                        // These often indicate the recognizer is in a bad state.
+                        // Destroy and recreate before restarting.
+                        handler.post {
+                            try { speechRecognizer?.destroy() } catch (_: Exception) {}
+                            speechRecognizer = null
+                        }
+                        if (!handleFailure(msg)) {
+                            handler.postDelayed({
+                                restartPending = false
+                                startListening()  // full recreate, not just session restart
+                            }, 1500L)
+                        }
+                    }
+                    else -> {
+                        // Recoverable — schedule normal restart
+                        scheduleRestart()
+                    }
                 }
             }
 
