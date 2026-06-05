@@ -2,6 +2,8 @@ package com.aetheria.vance.context
 
 import android.content.Context
 import androidx.room.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // ── Entities ─────────────────────────────────────────────────────
 
@@ -212,6 +214,11 @@ class MemoryStore(context: Context) {
     fun getSessionHistory(sessionId: String) = conversations.getBySession(sessionId)
 
     fun getRecentExchanges(limit: Int = 20) = conversations.getRecent(limit)
+
+    suspend fun getRecentConversations(limit: Int): List<ConversationEntity> =
+        withContext(Dispatchers.IO) {
+            conversations.getRecent(limit)
+        }
 
     fun clearHistory(sessionId: String) = conversations.clearSession(sessionId)
 

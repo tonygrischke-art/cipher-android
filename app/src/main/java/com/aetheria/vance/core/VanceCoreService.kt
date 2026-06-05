@@ -253,7 +253,16 @@ class VanceCoreService : Service() {
                     contextEngine.formatForPrompt(it)
                 } ?: contextEngine.getCurrentContext()
 
-                val result = brainRouter.route(transcript, contextStr)
+                // Load conversation history for context
+                val recentHistory = try {
+                    memoryStore.getRecentConversations(5)
+                        .joinToString("\n") { "${it.role}: ${it.content}" }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to load conversation history", e)
+                    ""
+                }
+
+                val result = brainRouter.route(transcript, contextStr, recentHistory)
 
                 // Execute action if present
                 val responseText = if (result.actionJson != null) {

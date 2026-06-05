@@ -56,15 +56,15 @@ class BrainRouter(
         val spokenResponse: String
     )
 
-    suspend fun route(transcript: String, context: String): BrainResult {
+    suspend fun route(transcript: String, context: String, history: String = ""): BrainResult {
         Log.d(TAG, "Routing: \"$transcript\"")
         val intent = classifyIntent(transcript)
         Log.d(TAG, "Intent classified as: $intent")
 
         return when (intent) {
             Intent.DEVICE_ACTION -> handleDeviceAction(transcript, context)
-            Intent.REASONING -> handleReasoning(transcript, context)
-            Intent.CONVERSATION -> handleConversation(transcript, context)
+            Intent.REASONING -> handleReasoning(transcript, context, history)
+            Intent.CONVERSATION -> handleConversation(transcript, context, history)
         }
     }
 
@@ -117,8 +117,8 @@ class BrainRouter(
         return BrainResult(spokenResponse = "Sorry, I couldn't process that right now.")
     }
 
-    private suspend fun handleReasoning(transcript: String, context: String): BrainResult {
-        val prompt = buildReasoningPrompt(transcript, context)
+    private suspend fun handleReasoning(transcript: String, context: String, history: String): BrainResult {
+        val prompt = buildReasoningPrompt(transcript, context, history)
 
         // Tier 1 : On-device reasoning model
         if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
@@ -152,8 +152,8 @@ class BrainRouter(
         )
     }
 
-    private suspend fun handleConversation(transcript: String, context: String): BrainResult {
-        val prompt = buildConversationPrompt(transcript, context)
+    private suspend fun handleConversation(transcript: String, context: String, history: String): BrainResult {
+        val prompt = buildConversationPrompt(transcript, context, history)
 
         // Try on-device first
         if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
@@ -191,11 +191,15 @@ class BrainRouter(
             "Context: $context. " +
             "Respond with JSON: {action_type, parameters, spoken_response}"
 
-    private fun buildReasoningPrompt(transcript: String, context: String): String =
-        "You are Cipher, an AI assistant. Context: $context. User: $transcript"
+    private fun buildReasoningPrompt(transcript: String, context: String, history: String): String {
+        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
+        return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
+    }
 
-    private fun buildConversationPrompt(transcript: String, context: String): String =
-        "You are Cipher, an AI assistant. Context: $context. User: $transcript"
+    private fun buildConversationPrompt(transcript: String, context: String, history: String): String {
+        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
+        return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
+    }
 
     // ── Response parsing ───────────────────────────────────────────
 
