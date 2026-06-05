@@ -127,7 +127,7 @@ class LiteRTEngine(
             .setTopK(TOP_K)
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
-            .setPreferredBackend(LlmInference.Backend.NNAPI)
+            .setBackend("NNAPI")
             .build()
 
         val session = LlmInference.createFromOptions(context, options)

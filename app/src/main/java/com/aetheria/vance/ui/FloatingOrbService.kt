@@ -123,7 +123,7 @@ class FloatingOrbService : Service() {
 
     private fun createOrb() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Log.e(TAG, "Cannot create floating orb — SYSTEM_ALERT_WINDOW permission not granted")
+            Log.e(TAG, "SYSTEM_ALERT_WINDOW not granted — orb cannot show")
             return
         }
         val params = WindowManager.LayoutParams().apply {
@@ -138,9 +138,9 @@ class FloatingOrbService : Service() {
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             format = PixelFormat.TRANSLUCENT
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 200
+            gravity = Gravity.BOTTOM or Gravity.END
+            x = 24
+            y = 120
         }
 
         orbView = OrbCanvasView(this).apply {
