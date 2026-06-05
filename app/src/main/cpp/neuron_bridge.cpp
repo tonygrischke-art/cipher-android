@@ -18,25 +18,18 @@
 
 // ============================================================================
 // Neuron Adapter Type Definitions
-// These match the MediaTek Neuron SDK API
-// ============================================================================
-
-typedef int32_t NeuronModel;
-typedef int32_t NeuronCompilation;
-typedef int32_t NeuronExecution;
-typedef int32_t NeuronMemory;
-
-// Return codes
-#define NEURON_NO_ERROR 0
-#define NEURON_OUT_OF_MEMORY 1
-#define NEURON_INCOMPLETE 2
-#define NEURON_UNEXPECTED_NULL 3
+// Opaque struct forward declarations — actual structs defined in Neuron SDK headers.
+// Using struct* pointers instead of int32_t typedefs prevents memory corruption.
 struct NeuronModel;
 struct NeuronCompilation;
 struct NeuronExecution;
 struct NeuronMemory;
 
 // Return codes
+#define NEURON_NO_ERROR 0
+#define NEURON_OUT_OF_MEMORY 1
+#define NEURON_INCOMPLETE 2
+#define NEURON_UNEXPECTED_NULL 3
 #define NEURON_BAD_DATA 4
 #define NEURON_OP_FAILED 5
 #define NEURON_UNMAPPABLE 5
