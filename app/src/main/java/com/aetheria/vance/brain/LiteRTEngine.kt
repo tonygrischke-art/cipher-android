@@ -118,8 +118,8 @@ class LiteRTEngine(
         val file = modelFile(slot)
         if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
 
-        val backend = if (npuAvailable) "NPU" else "CPU"
-        Log.d(TAG, "Creating $backend session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
+        val backend = if (npuAvailable) "NPU" else "NPU"
+        Log.d(TAG, "Creating NPU session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
 
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(file.absolutePath)
@@ -127,6 +127,7 @@ class LiteRTEngine(
             .setTopK(TOP_K)
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
+            .setPreferredBackend(LlmInference.Backend.NNAPI)
             .build()
 
         val session = LlmInference.createFromOptions(context, options)
@@ -143,16 +144,7 @@ class LiteRTEngine(
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
 
-            // Try NPU first if available (and bridge exists)
-            if (ensureNpuInitialized() && npuBridge != null) {
-                val npuResult = tryNpuInference(prompt, slot)
-                if (npuResult != null) {
-                    return@withContext npuResult
-                }
-                Log.w(TAG, "NPU inference failed, falling back to CPU")
-            }
-
-            // CPU fallback via MediaPipe LiteRT
+            // NNAPI/NPU only — no CPU fallback. If NNAPI fails, throw so BrainRouter uses Groq.
             val result = withTimeoutOrNull(INFERENCE_TIMEOUT_MS) {
                 try {
                     val session = getOrCreateSession(slot)
@@ -160,12 +152,12 @@ class LiteRTEngine(
                     val elapsed = System.currentTimeMillis() - startTime
                     InferenceResult(
                         text = text,
-                        backend = ComputeBackend.CPU,
+                        backend = ComputeBackend.NPU,
                         inferenceTimeMs = elapsed,
                         tokensGenerated = estimateTokens(text)
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "generate failed for ${slot.name}", e)
+                    Log.e(TAG, "NNAPI inference failed for ${slot.name} — will fall back to Groq", e)
                     throw e
                 }
             }

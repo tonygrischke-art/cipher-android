@@ -141,6 +141,19 @@ class VanceCoreService : Service() {
         voicePipeline.initialize()
         // WakeWordService is started by OnboardingActivity's LaunchedEffect.
         // Don't start it again here to avoid duplicate service instances.
+
+        // Check Groq API key — warn if cloud fallback is disabled
+        try {
+            val prefs = getSharedPreferences("cipher_secure_prefs", Context.MODE_PRIVATE)
+            val groqKey = prefs.getString("groq_api_key", "") ?: ""
+            if (groqKey.isBlank()) {
+                Log.w(TAG, "Groq API key not set — cloud fallback disabled. Set key in Settings.")
+            } else {
+                Log.d(TAG, "Groq API key is set — cloud fallback available")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not check Groq key: ${e.message}")
+        }
     }
 
     private fun registerNotificationReceiver() {
