@@ -50,12 +50,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "21"
+        jvmTarget = "17"
     }
 
     buildFeatures {
@@ -123,7 +123,7 @@ dependencies {
     kapt("androidx.room:room-compiler:2.6.1")
 
     // MediaPipe LiteRT LLM — with NPU delegate support
-    implementation("com.google.mediapipe:tasks-genai:0.10.22")
+    implementation("com.google.mediapipe:tasks-genai:0.10.14")
 
     // NPU: TensorFlow Lite with NNAPI delegate for MediaTek MT6878
     implementation("org.tensorflow:tensorflow-lite:2.15.0")

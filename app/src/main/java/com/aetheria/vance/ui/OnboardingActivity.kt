@@ -197,11 +197,11 @@ fun OnboardingFlow(
 ) {
     val viewModel: OnboardingViewModel = hiltViewModel()
 
-    // Auto-advance through all pages for hands-free setup
     val ctx = LocalContext.current
+
+    // Start services early — but do NOT auto-advance pages.
+    // Every page requires explicit user tap on Next/Continue button.
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(1500)
-        // Start services early while activity is still alive
         val coreIntent = android.content.Intent(ctx, com.aetheria.vance.core.VanceCoreService::class.java)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             ctx.startForegroundService(coreIntent)
@@ -210,12 +210,36 @@ fun OnboardingFlow(
         }
         ctx.startService(android.content.Intent(ctx, com.aetheria.vance.voice.WakeWordService::class.java))
         ctx.startService(android.content.Intent(ctx, FloatingOrbService::class.java))
-        while (viewModel.currentPage < viewModel.totalPages - 1) {
-            kotlinx.coroutines.delay(2000)
-            viewModel.nextPage()
+    }
+
+    // Accessibility page (page 2): auto-advance ONLY when permission is detected as granted
+    LaunchedEffect(viewModel.currentPage) {
+        if (viewModel.currentPage == 2) {
+            while (true) {
+                kotlinx.coroutines.delay(2000)
+                viewModel.checkAccessibility(ctx)
+                if (viewModel.accessibilityEnabled) {
+                    kotlinx.coroutines.delay(500)
+                    viewModel.nextPage()
+                    break
+                }
+            }
         }
-        kotlinx.coroutines.delay(5000)
-        onComplete()
+    }
+
+    // Shizuku page (page 3): auto-advance ONLY when Shizuku permission is granted
+    LaunchedEffect(viewModel.currentPage) {
+        if (viewModel.currentPage == 3) {
+            while (true) {
+                kotlinx.coroutines.delay(2000)
+                viewModel.checkShizuku()
+                if (viewModel.shizukuAvailable) {
+                    kotlinx.coroutines.delay(500)
+                    viewModel.nextPage()
+                    break
+                }
+            }
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars)) {
@@ -549,20 +573,8 @@ fun AccessibilityPage(viewModel: OnboardingViewModel) {
         viewModel.checkAccessibility(context)
     }
 
-    // Poll for accessibility enablement
-    LaunchedEffect(viewModel.accessibilityEnabled) {
-        if (!viewModel.accessibilityEnabled) {
-            while (true) {
-                delay(2000)
-                viewModel.checkAccessibility(context)
-                if (viewModel.accessibilityEnabled) {
-                    delay(1000)
-                    viewModel.nextPage()
-                    break
-                }
-            }
-        }
-    }
+    // Auto-advance is handled by OnboardingFlow LaunchedEffect when on page 2.
+    // Do NOT auto-advance here to avoid duplicate nextPage() calls.
 
     Column(
         modifier = Modifier
@@ -632,20 +644,8 @@ fun ShizukuPage(viewModel: OnboardingViewModel) {
         viewModel.checkShizuku()
     }
 
-    // Poll for Shizuku
-    LaunchedEffect(viewModel.shizukuAvailable) {
-        if (!viewModel.shizukuAvailable) {
-            while (true) {
-                delay(3000)
-                viewModel.checkShizuku()
-                if (viewModel.shizukuAvailable) {
-                    delay(1000)
-                    viewModel.nextPage()
-                    break
-                }
-            }
-        }
-    }
+    // Auto-advance is handled by OnboardingFlow LaunchedEffect when on page 3.
+    // Do NOT auto-advance here to avoid duplicate nextPage() calls.
 
     Column(
         modifier = Modifier
