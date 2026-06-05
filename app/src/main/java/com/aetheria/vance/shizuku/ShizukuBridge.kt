@@ -147,7 +147,12 @@ class ShizukuBridge {
         return withContext(Dispatchers.IO) {
             val result = withTimeoutOrNull(timeoutMs) {
                 try {
-                    val process = Runtime.getRuntime().exec(arrayOf("rish", "-c", cmd))
+                    val rishPath = listOf(
+                        "/data/local/tmp/rish",
+                        "/data/user/0/moe.shizuku.privileged.api/rish",
+                        "rish"  // fallback to PATH
+                    ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
+                    val process = Runtime.getRuntime().exec(arrayOf(rishPath, "-c", cmd))
                     val stdout = BufferedReader(InputStreamReader(process.inputStream)).readText()
                     val stderr = BufferedReader(InputStreamReader(process.errorStream)).readText()
                     process.waitFor()
@@ -179,8 +184,13 @@ class ShizukuBridge {
         }
 
         try {
+            val rishPath = listOf(
+                "/data/local/tmp/rish",
+                "/data/user/0/moe.shizuku.privileged.api/rish",
+                "rish"  // fallback to PATH
+            ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
             val process = withContext(Dispatchers.IO) {
-                Runtime.getRuntime().exec(arrayOf("rish", "-c", cmd))
+                Runtime.getRuntime().exec(arrayOf(rishPath, "-c", cmd))
             }
 
             val stdoutReader = withContext(Dispatchers.IO) {
