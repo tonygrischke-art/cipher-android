@@ -200,6 +200,68 @@ class BrainRouter(
         )
     }
 
+    private suspend fun handleCoding(transcript: String, context: String, history: String): BrainResult {
+        val prompt = buildCodingPrompt(transcript, context, history)
+
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.CODING)) {
+            try {
+                val raw = withTimeoutOrNull(45_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.CODING)
+                }
+                if (raw != null) {
+                    return BrainResult(spokenResponse = raw.text.trim())
+                }
+                Log.w(TAG, "Coding model timed out, falling back to Groq")
+            } catch (e: Exception) {
+                Log.w(TAG, "Coding model failed: ${e.message}")
+            }
+        }
+
+        val groqResponse = try {
+            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
+                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq fallback failed", e)
+            null
+        }
+
+        return BrainResult(
+            spokenResponse = groqResponse?.trim() ?: "Sorry, I couldn't process that coding request right now."
+        )
+    }
+
+    private suspend fun handleVision(transcript: String, context: String, history: String): BrainResult {
+        val prompt = buildVisionPrompt(transcript, context, history)
+
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.VISION)) {
+            try {
+                val raw = withTimeoutOrNull(45_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.VISION)
+                }
+                if (raw != null) {
+                    return BrainResult(spokenResponse = raw.text.trim())
+                }
+                Log.w(TAG, "Vision model timed out, falling back to Groq")
+            } catch (e: Exception) {
+                Log.w(TAG, "Vision model failed: ${e.message}")
+            }
+        }
+
+        val groqResponse = try {
+            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
+                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Groq fallback failed", e)
+            null
+        }
+
+        return BrainResult(
+            spokenResponse = groqResponse?.trim() ?: "Sorry, I couldn't analyze that image right now."
+        )
+    }
+
     // ── Prompt formatters ──────────────────────────────────────────
 
     private fun buildActionPrompt(transcript: String, context: String): String =
@@ -215,6 +277,16 @@ class BrainRouter(
     private fun buildConversationPrompt(transcript: String, context: String, history: String): String {
         val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
         return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
+    }
+
+    private fun buildCodingPrompt(transcript: String, context: String, history: String): String {
+        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
+        return "You are Cipher, an expert coding assistant. Context: $context$historyBlock\n\nUser: $transcript\n\nRespond with code and explanation."
+    }
+
+    private fun buildVisionPrompt(transcript: String, context: String, history: String): String {
+        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
+        return "You are Cipher, a vision AI assistant. Context: $context$historyBlock\n\nUser: $transcript\n\nDescribe what you see in detail."
     }
 
     // ── Response parsing ───────────────────────────────────────────
