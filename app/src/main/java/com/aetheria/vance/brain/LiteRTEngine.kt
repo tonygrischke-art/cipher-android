@@ -38,7 +38,7 @@ class LiteRTEngine(
         private const val TOP_K = 40
         private const val TEMPERATURE = 0.7f
         private const val RANDOM_SEED = 101
-        private const val INFERENCE_TIMEOUT_MS = 15_000L
+        private const val INFERENCE_TIMEOUT_MS = 45_000L
         private const val NPU_COMPILE_TIMEOUT_MS = 30_000L
     }
 

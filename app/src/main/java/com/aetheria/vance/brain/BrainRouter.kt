@@ -123,7 +123,7 @@ class BrainRouter(
         // Tier 1 : On-device reasoning model
         if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
             try {
-                val raw = withTimeoutOrNull(10_000L) {
+                val raw = withTimeoutOrNull(45_000L) {
                     liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
                 }
                 if (raw != null) {
@@ -158,7 +158,7 @@ class BrainRouter(
         // Try on-device first
         if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
             try {
-                val raw = withTimeoutOrNull(10_000L) {
+                val raw = withTimeoutOrNull(45_000L) {
                     liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
                 }
                 if (raw != null) {
