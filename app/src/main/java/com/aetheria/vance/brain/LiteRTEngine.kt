@@ -46,7 +46,8 @@ class LiteRTEngine(
         ACTION("mobile_actions_q8_ekv1024.litertlm"),
         REASONING("gemma-3n-E2B-it-int4.litertlm"),
         CODING("vibethinker-1.5b.litertlm"),      // abliterated coding model
-        VISION("gemma-4-E2B-vision.litertlm")      // image/video understanding
+        VISION("gemma-4-E2B-vision.litertlm"),    // image/video understanding
+        CHAT("qwen05.task")                        // Qwen 0.5B chat via MediaPipe Task
     }
 
     enum class ComputeBackend { NPU, CPU, GPU, UNAVAILABLE }
@@ -146,7 +147,8 @@ class LiteRTEngine(
             val startTime = System.currentTimeMillis()
 
             // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
-            if (NeuronBridge.isAvailable) {
+            // Skip NPU for CHAT (.task files are MediaPipe bundles, not raw NPU binaries)
+            if (NeuronBridge.isAvailable && slot != ModelSlot.CHAT) {
                 val modelFile = modelFile(slot)
                 if (modelFile.exists()) {
                     val result = tryNeuronBridge(prompt, slot, modelFile, startTime)
@@ -156,7 +158,7 @@ class LiteRTEngine(
             }
 
             // ── Try legacy NpuBridge second ─────────────────────────────────
-            if (ensureNpuInitialized() && npuBridge != null) {
+            if (slot != ModelSlot.CHAT && ensureNpuInitialized() && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult
