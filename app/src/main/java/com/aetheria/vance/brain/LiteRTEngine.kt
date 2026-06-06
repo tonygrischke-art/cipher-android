@@ -2,10 +2,12 @@ package com.aetheria.vance.brain
 
 import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -67,12 +69,30 @@ class LiteRTEngine(
     private var npuInitAttempted = false
 
     init {
+        Log.i("LiteRTEngine", "INIT START — filesDir=${context.filesDir.absolutePath}")
         // CRASH FIX: Do NOT initialize NPU in init block.
         // NPU init is deferred to first actual use (generate/tryNpuInference).
         // This prevents kernel panic on MT6878 when Hilt constructs the singleton
         // during app startup — the NPU driver may not be ready at that point.
         Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (npuBridge=${if (npuBridge != null) "injected" else "null"})")
         copyModelsIfNeeded(context)
+
+        // NPU smoke test — runs once on app launch in background
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.i("LiteRTEngine", "NPU: Auto smoke test starting")
+                val testFile = File(context.filesDir, "mobilenet_test.tflite")
+                if (testFile.exists()) {
+                    Log.i("LiteRTEngine", "NPU: mobilenet_test.tflite found (${testFile.length()/1024}KB)")
+                } else {
+                    Log.w("LiteRTEngine", "NPU: mobilenet_test.tflite NOT in filesDir")
+                }
+                tryNeuronBridge("Hello", ModelSlot.TEST, modelFile(ModelSlot.TEST), System.currentTimeMillis())
+                Log.i("LiteRTEngine", "NPU: Auto smoke test COMPLETE")
+            } catch (e: Throwable) {
+                Log.e("LiteRTEngine", "NPU: Auto smoke test failed: ${e.message}")
+            }
+        }
     }
 
     /**
@@ -227,15 +247,16 @@ class LiteRTEngine(
     private fun tryNeuronBridge(
         prompt: String, slot: ModelSlot, modelFile: File, startTime: Long
     ): InferenceResult? {
+        Log.i("LiteRTEngine", "NPU: tryNeuronBridge() called — checking model files")
         return try {
-            // For TEST slot, use hermes_int8.tflite from filesDir (80MB valid TFLite)
+            // For TEST slot, use mobilenet_test.tflite from filesDir (3.4MB valid TFLite)
             val npuModelFile = if (slot == ModelSlot.TEST) {
-                val f = File(context.filesDir, "hermes_int8.tflite")
+                val f = File(context.filesDir, "mobilenet_test.tflite")
                 if (f.exists()) {
-                    Log.i(TAG, "NPU TEST: using hermes_int8.tflite from filesDir (${f.length()/1024/1024}MB)")
+                    Log.i(TAG, "NPU TEST: using mobilenet_test.tflite from filesDir (${f.length()/1024}KB)")
                     f
                 } else {
-                    Log.w(TAG, "NPU TEST: hermes_int8.tflite not found in filesDir, falling back to ${modelFile.name}")
+                    Log.w(TAG, "NPU TEST: mobilenet_test.tflite not found in filesDir, falling back to ${modelFile.name}")
                     modelFile
                 }
             } else modelFile
