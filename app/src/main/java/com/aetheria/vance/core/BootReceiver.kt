@@ -30,14 +30,14 @@ class BootReceiver : BroadcastReceiver() {
 
         Thread {
             try {
-                // Use hermes_int8.tflite from app filesDir (80MB valid TFLite)
-                val modelFile = File(context.filesDir, "hermes_int8.tflite")
+                // Use mobilenet_test.tflite from app filesDir (3.4MB valid TFLite)
+                val modelFile = File(context.filesDir, "mobilenet_test.tflite")
                 val modelPath = if (modelFile.exists()) {
-                    Log.i(TAG, "NPU: using hermes_int8.tflite (${modelFile.length()/1024/1024}MB)")
+                    Log.i(TAG, "NPU: using mobilenet_test.tflite (${modelFile.length()/1024}KB)")
                     modelFile.absolutePath
                 } else {
-                    Log.w(TAG, "NPU: hermes_int8.tflite not in filesDir, trying /data/local/tmp/cipher_models/")
-                    "/data/local/tmp/cipher_models/hermes_int8.tflite"
+                    Log.w(TAG, "NPU: mobilenet_test.tflite not in filesDir, trying /data/local/tmp/cipher_models/")
+                    "/data/local/tmp/cipher_models/mobilenet_test.tflite"
                 }
                 val cacheDir = context.cacheDir.absolutePath + "/neuron_test"
 
