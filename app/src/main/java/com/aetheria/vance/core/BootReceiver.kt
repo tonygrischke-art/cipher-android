@@ -13,7 +13,7 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
-        Log.i("BootReceiver", "NPU: onReceive action=${intent.action}")
+        Log.i("BootReceiver", "NPU: onReceive action=${intent?.action}")
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED ||
             intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             Log.i(TAG, "Boot/update received — scheduling NPU smoke test")
