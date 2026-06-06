@@ -228,26 +228,42 @@ class LiteRTEngine(
         prompt: String, slot: ModelSlot, modelFile: File, startTime: Long
     ): InferenceResult? {
         return try {
+            // For TEST slot, use hermes_int8.tflite from filesDir (80MB valid TFLite)
+            val npuModelFile = if (slot == ModelSlot.TEST) {
+                val f = File(context.filesDir, "hermes_int8.tflite")
+                if (f.exists()) {
+                    Log.i(TAG, "NPU TEST: using hermes_int8.tflite from filesDir (${f.length()/1024/1024}MB)")
+                    f
+                } else {
+                    Log.w(TAG, "NPU TEST: hermes_int8.tflite not found in filesDir, falling back to ${modelFile.name}")
+                    modelFile
+                }
+            } else modelFile
+
+            Log.i(TAG, "NPU: nativeInit slot=${slot.name} model=${npuModelFile.name} size=${npuModelFile.length()/1024/1024}MB path=${npuModelFile.absolutePath}")
             val handle = try {
-                NeuronBridge.nativeInit(modelFile.absolutePath, context.cacheDir.absolutePath)
+                NeuronBridge.nativeInit(npuModelFile.absolutePath, context.cacheDir.absolutePath)
             } catch (e: Throwable) {
-                Log.e(TAG, "NeuronBridge.nativeInit threw: ${e.message}")
+                Log.e(TAG, "NPU: nativeInit threw for ${slot.name}: ${e.message}")
                 0L
             }
+            Log.i(TAG, "NPU: nativeInit returned handle=$handle for ${slot.name}")
             if (handle == 0L) {
-                Log.w(TAG, "NeuronBridge.nativeInit returned 0 for ${slot.name}")
+                Log.w(TAG, "NPU: nativeInit returned 0 for ${slot.name} — NPU unavailable or model rejected")
                 return null
             }
             try {
+                Log.i(TAG, "NPU: calling nativeInfer for ${slot.name} prompt='${prompt.take(50)}'")
                 val text = NeuronBridge.nativeInfer(handle, prompt)
                 val elapsed = System.currentTimeMillis() - startTime
+                Log.i(TAG, "NPU: nativeInfer result for ${slot.name}: '${text.take(100)}' (${elapsed}ms)")
 
                 if (text.startsWith("NPU_ERROR:")) {
-                    Log.w(TAG, "NeuronBridge error: $text")
+                    Log.w(TAG, "NPU: inference error for ${slot.name}: $text")
                     return null
                 }
 
-                Log.i(TAG, "NeuronBridge NPU inference completed in ${elapsed}ms")
+                Log.i(TAG, "NPU: inference completed for ${slot.name} in ${elapsed}ms")
                 InferenceResult(
                     text = text,
                     backend = ComputeBackend.NPU,
@@ -255,10 +271,13 @@ class LiteRTEngine(
                     tokensGenerated = estimateTokens(text)
                 )
             } finally {
-                if (handle != 0L) NeuronBridge.nativeClose(handle)
+                if (handle != 0L) {
+                    NeuronBridge.nativeClose(handle)
+                    Log.i(TAG, "NPU: nativeClose done for ${slot.name}")
+                }
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "NeuronBridge inference exception: ${e.message}")
+            Log.e(TAG, "NPU: inference exception for ${slot.name}: ${e.message}")
             null
         }
     }
