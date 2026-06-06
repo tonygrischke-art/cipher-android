@@ -47,7 +47,8 @@ class LiteRTEngine(
         REASONING("gemma-3n-E2B-it-int4.litertlm"),
         CODING("vibethinker-1.5b.litertlm"),      // abliterated coding model
         VISION("gemma-4-E2B-vision.litertlm"),    // image/video understanding
-        CHAT("qwen05.task")                        // Qwen 0.5B chat via MediaPipe Task
+        CHAT("qwen05.task"),                        // Qwen 0.5B chat via MediaPipe Task
+        TEST("hermes_int8.tflite")                   // NPU smoke test (80MB int8 model)
     }
 
     enum class ComputeBackend { NPU, CPU, GPU, UNAVAILABLE }
