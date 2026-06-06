@@ -124,15 +124,14 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // MediaPipe LiteRT LLM — with NPU delegate support
+    // MediaPipe LiteRT LLM
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
+    implementation("com.google.mediapipe:tasks-core:0.10.14")
 
-    // NPU: TensorFlow Lite with NNAPI delegate for MediaTek MT6878
+    // TensorFlow Lite — NNAPI delegate for MediaTek MT6878 NPU
     implementation("org.tensorflow:tensorflow-lite:2.15.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.15.0")
     implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
-    // Neuron delegate — check MediaTek/TensorFlow documentation for exact artifact
-    // implementation("org.tensorflow:tensorflow-lite-neuron:2.15.0")  // May vary by SDK version
 
     // Shizuku
     implementation("dev.rikka.shizuku:api:13.1.5")

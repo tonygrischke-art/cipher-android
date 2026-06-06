@@ -1,6 +1,8 @@
 package com.aetheria.vance.brain
 
 import android.util.Log
+import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.lang.reflect.Field
 
 /**
  * On-device inference engine with NPU acceleration via MediaTek Neuron Adapter.
@@ -173,8 +176,9 @@ class LiteRTEngine(
         val file = modelFile(slot)
         if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
 
-        val backend = if (ensureNpuInitialized()) "NPU" else "CPU"
-        Log.d(TAG, "Creating $backend session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
+        val useGpu = NeuronBridge.isAvailable
+        val backend = if (useGpu) "GPU/NPU" else "CPU"
+        Log.i(TAG, "Creating $backend session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
 
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(file.absolutePath)
@@ -186,7 +190,7 @@ class LiteRTEngine(
 
         val session = LlmInference.createFromOptions(context, options)
         sessions[slot] = session
-        Log.d(TAG, "Session ready for ${slot.name} on $backend")
+        Log.d(TAG, "Session ready for ${slot.name}")
         return session
     }
 
