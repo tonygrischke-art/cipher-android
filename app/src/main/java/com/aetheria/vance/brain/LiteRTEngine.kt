@@ -145,16 +145,26 @@ class LiteRTEngine(
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
 
-            // Try NPU first via Neuron Adapter bridge
+            // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
+            if (NeuronBridge.isAvailable) {
+                val modelFile = modelFile(slot)
+                if (modelFile.exists()) {
+                    val result = tryNeuronBridge(prompt, slot, modelFile, startTime)
+                    if (result != null) return@withContext result
+                    Log.w(TAG, "NeuronBridge NPU failed, falling back")
+                }
+            }
+
+            // ── Try legacy NpuBridge second ─────────────────────────────────
             if (ensureNpuInitialized() && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult
                 }
-                Log.w(TAG, "NPU inference failed, falling back to CPU via MediaPipe")
+                Log.w(TAG, "Legacy NPU inference failed, falling back to CPU via MediaPipe")
             }
 
-            // CPU fallback via MediaPipe LiteRT
+            // ── CPU fallback via MediaPipe LiteRT ───────────────────────────
             val result = withTimeoutOrNull(INFERENCE_TIMEOUT_MS) {
                 try {
                     val session = getOrCreateSession(slot)
@@ -177,6 +187,43 @@ class LiteRTEngine(
             }
             result
         }
+
+    /**
+     * Attempt NPU inference via NeuronBridge (libneuronusdk_adapter.mtk.so).
+     */
+    private fun tryNeuronBridge(
+        prompt: String, slot: ModelSlot, modelFile: File, startTime: Long
+    ): InferenceResult? {
+        return try {
+            val handle = NeuronBridge.nativeInit(modelFile.absolutePath, context.cacheDir.absolutePath)
+            if (handle == 0L) {
+                Log.w(TAG, "NeuronBridge.nativeInit returned 0 for ${slot.name}")
+                return null
+            }
+            try {
+                val text = NeuronBridge.nativeInfer(handle, prompt)
+                val elapsed = System.currentTimeMillis() - startTime
+
+                if (text.startsWith("NPU_ERROR:")) {
+                    Log.w(TAG, "NeuronBridge error: $text")
+                    return null
+                }
+
+                Log.i(TAG, "NeuronBridge NPU inference completed in ${elapsed}ms")
+                InferenceResult(
+                    text = text,
+                    backend = ComputeBackend.NPU,
+                    inferenceTimeMs = elapsed,
+                    tokensGenerated = estimateTokens(text)
+                )
+            } finally {
+                NeuronBridge.nativeClose(handle)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "NeuronBridge inference exception", e)
+            null
+        }
+    }
 
     /**
      * Attempt NPU-accelerated inference via Neuron Adapter.
