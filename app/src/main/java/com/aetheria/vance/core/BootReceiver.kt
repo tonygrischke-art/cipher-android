@@ -6,7 +6,6 @@ import android.content.Intent
 import android.util.Log
 import com.aetheria.vance.brain.NeuronBridge
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -14,26 +13,34 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
+        Log.i(TAG, "onReceive: action=${intent?.action}")
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED ||
             intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            Log.d(TAG, "Boot/update received — action=${intent.action}")
-            runNpuSmokeTest(context)
+            Log.i(TAG, "Boot/update received — scheduling NPU smoke test")
+            try {
+                runNpuSmokeTest(context)
+            } catch (e: Throwable) {
+                Log.e(TAG, "NPU smoke test failed: ${e.message}")
+            }
         }
     }
 
     private fun runNpuSmokeTest(context: Context) {
-        if (!NeuronBridge.isAvailable) {
-            Log.w(TAG, "NPU: NeuronBridge.isAvailable=false")
-            return
+        Log.i(TAG, "NPU: checking NeuronBridge.isAvailable...")
+        val available = try {
+            NeuronBridge.isAvailable
+        } catch (e: Throwable) {
+            Log.e(TAG, "NPU: NeuronBridge.isAvailable threw: ${e.message}")
+            false
         }
-        Log.i(TAG, "NPU: NeuronBridge.isAvailable=true, running smoke test...")
+        Log.i(TAG, "NPU: NeuronBridge.isAvailable=$available")
+        if (!available) return
 
         Thread {
             try {
-                // Use mobilenet_test.tflite from app filesDir (3.4MB valid TFLite)
                 val modelFile = File(context.filesDir, "mobilenet_test.tflite")
                 val modelPath = if (modelFile.exists()) {
-                    Log.i(TAG, "NPU: using mobilenet_test.tflite (${modelFile.length()/1024}KB)")
+                    Log.i(TAG, "NPU: using mobilenet_test.tflite (${modelFile.length() / 1024}KB)")
                     modelFile.absolutePath
                 } else {
                     Log.w(TAG, "NPU: mobilenet_test.tflite not in filesDir, trying /data/local/tmp/cipher_models/")
