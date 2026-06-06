@@ -71,6 +71,32 @@ class LiteRTEngine(
         // This prevents kernel panic on MT6878 when Hilt constructs the singleton
         // during app startup — the NPU driver may not be ready at that point.
         Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (npuBridge=${if (npuBridge != null) "injected" else "null"})")
+        copyModelsIfNeeded(context)
+    }
+
+    /**
+     * Copy models from /data/local/tmp/cipher_models/ into context.filesDir
+     * at first launch. The app has write permission to its own filesDir.
+     * Subsequent launches skip files that already exist with matching size.
+     */
+    private fun copyModelsIfNeeded(ctx: android.content.Context) {
+        val srcDir = File(modelDir)
+        val dstDir = ctx.filesDir
+        if (!srcDir.exists()) { Log.w(TAG, "Model source dir missing: $modelDir"); return }
+        val files = srcDir.listFiles() ?: return
+        if (files.isEmpty()) { Log.w(TAG, "No model files in $modelDir"); return }
+        for (src in files) {
+            val dst = File(dstDir, src.name)
+            if (!dst.exists() || dst.length() != src.length()) {
+                Log.i(TAG, "Copying model: ${src.name} (${src.length() / 1024 / 1024}MB)")
+                try {
+                    src.copyTo(dst, overwrite = true)
+                    Log.i(TAG, "Copy complete: ${src.name}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to copy ${src.name}", e)
+                }
+            }
+        }
     }
 
     /**
@@ -95,7 +121,11 @@ class LiteRTEngine(
         return npuAvailable
     }
 
-    private fun modelFile(slot: ModelSlot): File = File(modelDir, slot.fileName)
+    private fun modelFile(slot: ModelSlot): File {
+        val filesDirPath = File(context.filesDir, slot.fileName).absolutePath
+        if (File(filesDirPath).exists()) return File(filesDirPath)
+        return File(modelDir, slot.fileName)
+    }
 
     fun isModelAvailable(slot: ModelSlot): Boolean = modelFile(slot).exists()
 
