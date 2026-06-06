@@ -227,7 +227,12 @@ class LiteRTEngine(
         prompt: String, slot: ModelSlot, modelFile: File, startTime: Long
     ): InferenceResult? {
         return try {
-            val handle = NeuronBridge.nativeInit(modelFile.absolutePath, context.cacheDir.absolutePath)
+            val handle = try {
+                NeuronBridge.nativeInit(modelFile.absolutePath, context.cacheDir.absolutePath)
+            } catch (e: Throwable) {
+                Log.e(TAG, "NeuronBridge.nativeInit threw: ${e.message}")
+                0L
+            }
             if (handle == 0L) {
                 Log.w(TAG, "NeuronBridge.nativeInit returned 0 for ${slot.name}")
                 return null
@@ -249,10 +254,10 @@ class LiteRTEngine(
                     tokensGenerated = estimateTokens(text)
                 )
             } finally {
-                NeuronBridge.nativeClose(handle)
+                if (handle != 0L) NeuronBridge.nativeClose(handle)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "NeuronBridge inference exception", e)
+        } catch (e: Throwable) {
+            Log.e(TAG, "NeuronBridge inference exception: ${e.message}")
             null
         }
     }

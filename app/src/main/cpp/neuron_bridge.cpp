@@ -372,68 +372,109 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     JNIEnv* env, jobject /*thiz*/,
     jstring modelPath, jstring cacheDir)
 {
-    const char* path = env->GetStringUTFChars(modelPath, nullptr);
-    const char* cache = env->GetStringUTFChars(cacheDir, nullptr);
-    std::string model_path(path);
-    std::string cache_dir(cache);
-    env->ReleaseStringUTFChars(modelPath, path);
-    env->ReleaseStringUTFChars(cacheDir, cache);
+    try {
+        const char* path = env->GetStringUTFChars(modelPath, nullptr);
+        const char* cache = env->GetStringUTFChars(cacheDir, nullptr);
+        std::string model_path(path);
+        std::string cache_dir(cache);
+        env->ReleaseStringUTFChars(modelPath, path);
+        env->ReleaseStringUTFChars(cacheDir, cache);
 
-    std::lock_guard<std::mutex> lock(g_mutex);
-
-    NeuronSession* session = new (std::nothrow) NeuronSession();
-    if (!session) { LOGE("OOM"); return 0; }
-    session->model_path = model_path;
-
-    // 1. Load adapter
-    session->adapter_handle = loadAdapter();
-    if (!session->adapter_handle) { delete session; return 0; }
-
-    // 2. Resolve symbols
-    if (!resolveAll(session)) { delete session; return 0; }
-
-    // 3. Try cache
-    std::string neuron_cache = cache_dir + std::string("/neuron_cache");
-    if (loadFromCache(session, neuron_cache)) {
-        if (createExecution(session)) {
-            LOGI("Session from cache: %p", (void*)session);
-            return (jlong)session;
+        // ── Validate model file is a real TFLite flatbuffer ───────────────
+        {
+            FILE* vf = fopen(model_path.c_str(), "rb");
+            if (!vf) { LOGE("Cannot open model file: %s", model_path.c_str()); return 0L; }
+            uint8_t magic[8] = {0};
+            size_t nrd = fread(magic, 1, 8, vf);
+            fclose(vf);
+            if (nrd < 8) { LOGE("Model file too small: %s", model_path.c_str()); return 0L; }
+            // TFLite flatbuffer: "TFL3" at offset 0, or at offset 4 (MediaPipe bundle prefix)
+            bool isTflite = (magic[0]=='T' && magic[1]=='F' && magic[2]=='L' && magic[3]=='3')
+                         || (magic[4]=='T' && magic[5]=='F' && magic[6]=='L' && magic[7]=='3');
+            if (!isTflite) {
+                LOGE("Model file is not a valid TFLite flatbuffer — skipping NPU: %s", model_path.c_str());
+                return 0L;
+            }
         }
-        // Cache was corrupt, clean up and rebuild
-        LOGE("Cache rebuild needed");
-        if (session->compilation) { session->fnCompilationFree(session->compilation); session->compilation = nullptr; }
-        if (session->model) { session->fnModelFree(session->model); session->model = nullptr; }
+
+        std::lock_guard<std::mutex> lock(g_mutex);
+
+        NeuronSession* session = new (std::nothrow) NeuronSession();
+        if (!session) { LOGE("OOM"); return 0L; }
+        session->model_path = model_path;
+
+        // 1. Load adapter
+        session->adapter_handle = loadAdapter();
+        if (!session->adapter_handle) { delete session; return 0L; }
+
+        // 2. Resolve symbols
+        if (!resolveAll(session)) { delete session; return 0L; }
+
+        // 3. Null-check every required function pointer ─────────────────────
+        if (!session->fnModelCreate       || !session->fnModelFinish    ||
+            !session->fnModelAddOperand   || !session->fnModelSetOperandValue ||
+            !session->fnModelIdentifyInputsAndOutputs ||
+            !session->fnModelRelaxComputationFloat32toFloat16 ||
+            !session->fnCompilationCreateV2 || !session->fnCompilationFinish ||
+            !session->fnCompilationFree   || !session->fnCompilationGetSize ||
+            !session->fnCompilationStore  || !session->fnCompilationSetOptString ||
+            !session->fnExecutionCreate   || !session->fnExecutionFree   ||
+            !session->fnExecutionSetInput || !session->fnExecutionSetOutput ||
+            !session->fnExecutionCompute) {
+            LOGE("Missing required Neuron function pointers — NPU unavailable");
+            delete session;
+            return 0L;
+        }
+
+        // 4. Try cache
+        std::string neuron_cache = cache_dir + std::string("/neuron_cache");
+        if (loadFromCache(session, neuron_cache)) {
+            if (createExecution(session)) {
+                LOGI("Session from cache: %p", (void*)session);
+                return (jlong)session;
+            }
+            // Cache was corrupt, clean up and rebuild
+            LOGE("Cache rebuild needed");
+            if (session->compilation) { session->fnCompilationFree(session->compilation); session->compilation = nullptr; }
+            if (session->model) { session->fnModelFree(session->model); session->model = nullptr; }
+        }
+
+        // 5. Load model binary
+        std::vector<uint8_t> model_data;
+        if (!loadModelBinary(model_path, model_data)) { delete session; return 0L; }
+
+        // 6. Build model
+        if (!buildModel(session, model_data)) {
+            if (session->model) { session->fnModelFree(session->model); session->model = nullptr; }
+            delete session; return 0L;
+        }
+
+        // 7. Compile
+        if (!compileModel(session)) {
+            if (session->compilation) { session->fnCompilationFree(session->compilation); }
+            if (session->model) { session->fnModelFree(session->model); }
+            delete session; return 0L;
+        }
+
+        // 8. Save cache
+        saveCache(session, neuron_cache);
+
+        // 9. Create execution
+        if (!createExecution(session)) {
+            if (session->compilation) { session->fnCompilationFree(session->compilation); }
+            if (session->model) { session->fnModelFree(session->model); }
+            delete session; return 0L;
+        }
+
+        LOGI("Session fresh: %p", (void*)session);
+        return (jlong)session;
+    } catch (const std::exception& e) {
+        LOGE("nativeInit exception: %s", e.what());
+        return 0L;
+    } catch (...) {
+        LOGE("nativeInit unknown exception");
+        return 0L;
     }
-
-    // 4. Load model binary
-    std::vector<uint8_t> model_data;
-    if (!loadModelBinary(model_path, model_data)) { delete session; return 0; }
-
-    // 5. Build model
-    if (!buildModel(session, model_data)) {
-        if (session->model) { session->fnModelFree(session->model); session->model = nullptr; }
-        delete session; return 0;
-    }
-
-    // 6. Compile
-    if (!compileModel(session)) {
-        if (session->compilation) { session->fnCompilationFree(session->compilation); }
-        if (session->model) { session->fnModelFree(session->model); }
-        delete session; return 0;
-    }
-
-    // 7. Save cache
-    saveCache(session, neuron_cache);
-
-    // 8. Create execution
-    if (!createExecution(session)) {
-        if (session->compilation) { session->fnCompilationFree(session->compilation); }
-        if (session->model) { session->fnModelFree(session->model); }
-        delete session; return 0;
-    }
-
-    LOGI("Session fresh: %p", (void*)session);
-    return (jlong)session;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
