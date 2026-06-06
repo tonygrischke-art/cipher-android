@@ -16,12 +16,10 @@ class BootReceiver : BroadcastReceiver() {
         Log.i("BootReceiver", "NPU: onReceive action=${intent?.action}")
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED ||
             intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            Log.i(TAG, "Boot/update received — scheduling NPU smoke test")
-            try {
-                runNpuSmokeTest(context)
-            } catch (e: Throwable) {
-                Log.e(TAG, "NPU smoke test failed: ${e.message}")
-            }
+            // NPU smoke test disabled — NeuronBridge buildModel crashes on real TFLite
+        // TODO: Use MediaPipe NNAPI delegate or pre-compiled .dla files instead
+        Log.i(TAG, "Boot/update received — NPU smoke test disabled")
+        // try { runNpuSmokeTest(context) } catch (e: Throwable) { Log.e(TAG, "NPU: ${e.message}") }
         }
     }
 

@@ -77,22 +77,23 @@ class LiteRTEngine(
         Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (npuBridge=${if (npuBridge != null) "injected" else "null"})")
         copyModelsIfNeeded(context)
 
-        // NPU smoke test — runs once on app launch in background
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.i("LiteRTEngine", "NPU: Auto smoke test starting")
-                val testFile = File(context.filesDir, "mobilenet_test.tflite")
-                if (testFile.exists()) {
-                    Log.i("LiteRTEngine", "NPU: mobilenet_test.tflite found (${testFile.length()/1024}KB)")
-                } else {
-                    Log.w("LiteRTEngine", "NPU: mobilenet_test.tflite NOT in filesDir")
-                }
-                tryNeuronBridge("Hello", ModelSlot.TEST, modelFile(ModelSlot.TEST), System.currentTimeMillis())
-                Log.i("LiteRTEngine", "NPU: Auto smoke test COMPLETE")
-            } catch (e: Throwable) {
-                Log.e("LiteRTEngine", "NPU: Auto smoke test failed: ${e.message}")
-            }
-        }
+        // NPU smoke test — disabled: NeuronBridge buildModel crashes on real TFLite models
+        // TODO: Replace with MediaPipe NNAPI delegate or pre-compiled .dla files
+        // CoroutineScope(Dispatchers.IO).launch {
+        //     try {
+        //         Log.i("LiteRTEngine", "NPU: Auto smoke test starting")
+        //         val testFile = File(context.filesDir, "mobilenet_test.tflite")
+        //         if (testFile.exists()) {
+        //             Log.i("LiteRTEngine", "NPU: mobilenet_test.tflite found (${testFile.length()/1024}KB)")
+        //         } else {
+        //             Log.w("LiteRTEngine", "NPU: mobilenet_test.tflite NOT in filesDir")
+        //         }
+        //         tryNeuronBridge("Hello", ModelSlot.TEST, modelFile(ModelSlot.TEST), System.currentTimeMillis())
+        //         Log.i("LiteRTEngine", "NPU: Auto smoke test COMPLETE")
+        //     } catch (e: Throwable) {
+        //         Log.e("LiteRTEngine", "NPU: Auto smoke test failed: ${e.message}")
+        //     }
+        // }
     }
 
     /**
