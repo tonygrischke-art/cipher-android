@@ -38,8 +38,6 @@ class LiteRTEngine(
         private const val REASONING_MODEL = "gemma-3n-E2B-it-int4.litertlm"
         private const val MAX_TOKENS = 1024
         private const val TOP_K = 40
-        private const val TEMPERATURE = 0.7f
-        private const val RANDOM_SEED = 101
         private const val INFERENCE_TIMEOUT_MS = 45_000L
         private const val NPU_COMPILE_TIMEOUT_MS = 30_000L
     }
@@ -180,9 +178,7 @@ class LiteRTEngine(
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(file.absolutePath)
             .setMaxTokens(MAX_TOKENS)
-            .setTopK(TOP_K)
-            .setTemperature(TEMPERATURE)
-            .setRandomSeed(RANDOM_SEED)
+            .setMaxTopK(TOP_K)
             .setPreferredBackend(LlmInference.Backend.GPU)
             .build()
 
