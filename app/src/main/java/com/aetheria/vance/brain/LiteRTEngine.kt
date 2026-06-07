@@ -47,7 +47,7 @@ class LiteRTEngine(
         REASONING("gemma-3n-E2B-it-int4.litertlm"),
         CODING("vibethinker-1.5b.litertlm"),      // abliterated coding model
         VISION("gemma-4-E2B-vision.litertlm"),    // image/video understanding
-        CHAT("qwen05.task"),                        // Qwen 0.5B chat via MediaPipe Task
+        CHAT("qwen05.task"),                        // Qwen 0.5B chat via MediaPipe Task bundle
         TEST("hermes_int8.tflite")                   // NPU smoke test (80MB int8 model)
     }
 
@@ -194,6 +194,12 @@ class LiteRTEngine(
         sessions[slot]?.let { return it }
         val file = modelFile(slot)
         if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
+
+        // For CHAT slot, ensure model is in filesDir (not source dir) to avoid MediaPipe crash
+        if (slot == ModelSlot.CHAT && file.absolutePath.startsWith("/data/local/tmp")) {
+            Log.w(TAG, "CHAT model not yet copied to filesDir, skipping MediaPipe session")
+            throw ModelNotFoundException(slot.name, "pending copy to filesDir")
+        }
 
         val backend = "CPU"
         Log.i(TAG, "Creating $backend session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
