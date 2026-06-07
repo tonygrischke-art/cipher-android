@@ -10,9 +10,11 @@ import org.json.JSONObject
  * classifies intent, formats prompts, parses responses, and returns structured results.
  *
  * Routing:
- *   DEVICE_ACTION → LiteRT ACTION_MODEL → Groq llama-3.3-70b fallback
- *   REASONING     → LiteRT REASONING_MODEL → Groq llama-3.3-70b fallback
- *   CONVERSATION  → LiteRT REASONING_MODEL → Groq llama-3.3-70b fallback
+ *   DEVICE_ACTION → LiteRT ACTION_MODEL (mobile_actions) → Groq llama-3.3-70b fallback
+ *   CONVERSATION  → LiteRT CHAT_MODEL (qwen05) → REASONING_MODEL (gemma-3n) → Groq fallback
+ *   REASONING     → LiteRT REASONING_MODEL (gemma-3n) → Groq llama-3.3-70b fallback
+ *   CODING        → LiteRT CODING_MODEL (vibethinker) → Groq fallback
+ *   VISION        → LiteRT VISION_MODEL (gemma-4-vision) → Groq fallback
  *
  * Returns [BrainResult] with optional action JSON and spoken response text.
  */
@@ -171,7 +173,22 @@ class BrainRouter(
     private suspend fun handleConversation(transcript: String, context: String, history: String): BrainResult {
         val prompt = buildConversationPrompt(transcript, context, history)
 
-        // Try on-device first
+        // Tier 1: On-device CHAT model (qwen05.task via MediaPipe)
+        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.CHAT)) {
+            try {
+                val raw = withTimeoutOrNull(45_000L) {
+                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.CHAT)
+                }
+                if (raw != null) {
+                    return BrainResult(spokenResponse = raw.text.trim())
+                }
+                Log.w(TAG, "CHAT model timed out, trying REASONING model")
+            } catch (e: Exception) {
+                Log.w(TAG, "CHAT model failed: ${e.message}")
+            }
+        }
+
+        // Tier 2: On-device REASONING model (gemma-3n fallback)
         if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
             try {
                 val raw = withTimeoutOrNull(45_000L) {
@@ -180,12 +197,13 @@ class BrainRouter(
                 if (raw != null) {
                     return BrainResult(spokenResponse = raw.text.trim())
                 }
+                Log.w(TAG, "REASONING model timed out, falling back to Groq")
             } catch (e: Exception) {
-                Log.w(TAG, "On-device conversation failed: ${e.message}")
+                Log.w(TAG, "REASONING model failed: ${e.message}")
             }
         }
 
-        // Groq fallback
+        // Tier 3: Groq fallback
         val groqResponse = try {
             withTimeoutOrNull(GROQ_TIMEOUT_MS) {
                 groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
