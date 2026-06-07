@@ -105,7 +105,7 @@ class LiteRTEngine(
      * at first launch. The app has write permission to its own filesDir.
      * Subsequent launches skip files that already exist with matching size.
      */
-    private fun copyModelsIfNeeded(ctx: android.content.Context) {
+    fun copyModelsIfNeeded(ctx: android.content.Context = context) {
         val srcDir = File(modelDir)
         val dstDir = ctx.filesDir
         if (!srcDir.exists()) { Log.w(TAG, "Model source dir missing: $modelDir"); return }

@@ -44,6 +44,7 @@ import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aetheria.vance.brain.LiteRTEngine
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.shizuku.ShizukuBridge
 import com.aetheria.vance.ui.theme.CipherTheme
@@ -124,13 +125,31 @@ class OnboardingActivity : ComponentActivity() {
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
-    private val shizukuBridge: ShizukuBridge
+    private val shizukuBridge: ShizukuBridge,
+    private val liteRTEngine: LiteRTEngine
 ) : ViewModel() {
 
     var currentPage by mutableIntStateOf(0)
         private set
 
     val permissionsGranted = mutableStateMapOf<String, Boolean>()
+
+    // Trigger model copy on first composition — fire and forget
+    var modelCopyStarted = false
+
+    fun triggerModelCopy() {
+        if (modelCopyStarted) return
+        modelCopyStarted = true
+        viewModelScope.launch(Dispatchers.IO) {
+            Log.d("Onboarding", "Triggering model copy...")
+            try {
+                liteRTEngine.copyModelsIfNeeded()
+                Log.d("Onboarding", "Model copy complete")
+            } catch (e: Exception) {
+                Log.e("Onboarding", "Model copy failed: ${e.message}")
+            }
+        }
+    }
 
     var shizukuAvailable by mutableStateOf(false)
         private set
@@ -198,6 +217,9 @@ fun OnboardingFlow(
         }
         ctx.startService(android.content.Intent(ctx, com.aetheria.vance.voice.WakeWordService::class.java))
         ctx.startService(android.content.Intent(ctx, FloatingOrbService::class.java))
+
+        // Trigger model copy on IO thread — fire and forget
+        viewModel.triggerModelCopy()
     }
 
     // Accessibility page (page 2): auto-advance ONLY when permission is detected as granted
