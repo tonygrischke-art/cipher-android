@@ -81,23 +81,23 @@ class LiteRTEngine(
             copyModelsIfNeeded(context)
         }
 
-        // NPU smoke test — disabled: NeuronBridge buildModel crashes on real TFLite models
-        // TODO: Replace with MediaPipe NNAPI delegate or pre-compiled .dla files
-        // CoroutineScope(Dispatchers.IO).launch {
-        //     try {
-        //         Log.i("LiteRTEngine", "NPU: Auto smoke test starting")
-        //         val testFile = File(context.filesDir, "mobilenet_test.tflite")
-        //         if (testFile.exists()) {
-        //             Log.i("LiteRTEngine", "NPU: mobilenet_test.tflite found (${testFile.length()/1024}KB)")
-        //         } else {
-        //             Log.w("LiteRTEngine", "NPU: mobilenet_test.tflite NOT in filesDir")
-        //         }
-        //         tryNeuronBridge("Hello", ModelSlot.TEST, modelFile(ModelSlot.TEST), System.currentTimeMillis())
-        //         Log.i("LiteRTEngine", "NPU: Auto smoke test COMPLETE")
-        //     } catch (e: Throwable) {
-        //         Log.e("LiteRTEngine", "NPU: Auto smoke test failed: ${e.message}")
-        //     }
-        // }
+        // NPU smoke test — TFLite NNAPI path
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val testFile = File(context.filesDir, "mobilenet_test.tflite")
+                if (testFile.exists()) {
+                    Log.i(TAG, "NPU smoke test: mobilenet_test.tflite found (${testFile.length() / 1024}KB)")
+                    val engine = TfliteEngine(context)
+                    val success = engine.init(testFile)
+                    Log.i(TAG, "NPU smoke test: ${if (success) "PASSED" else "FAILED"}")
+                    engine.close()
+                } else {
+                    Log.w(TAG, "NPU smoke test: mobilenet_test.tflite not in filesDir — skipping")
+                }
+            } catch (e: Throwable) {
+                Log.e(TAG, "NPU smoke test error: ${e.message}")
+            }
+        }
     }
 
     /**
