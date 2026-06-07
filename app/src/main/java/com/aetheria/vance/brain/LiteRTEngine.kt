@@ -42,6 +42,9 @@ class LiteRTEngine(
         private const val NPU_COMPILE_TIMEOUT_MS = 30_000L
     }
 
+    @Volatile
+    private var modelsCopied = false
+
     enum class ModelSlot(val fileName: String) {
         ACTION("mobile_actions_q8_ekv1024.litertlm"),
         REASONING("gemma-3n-E2B-it-int4.litertlm"),
