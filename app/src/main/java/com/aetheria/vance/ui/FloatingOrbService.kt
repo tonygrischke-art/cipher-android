@@ -221,7 +221,7 @@ class FloatingOrbService : Service() {
 
     private fun onOrbTap() {
         Log.d(TAG, "Orb tapped — expanding chat UI")
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val intent = Intent(this, VanceChatActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra("show_chat", true)
         }

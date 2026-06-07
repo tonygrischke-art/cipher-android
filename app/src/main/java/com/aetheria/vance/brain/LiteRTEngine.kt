@@ -171,15 +171,13 @@ class LiteRTEngine(
         val file = modelFile(slot)
         if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
 
-        val useGpu = NeuronBridge.isAvailable
-        val backend = if (useGpu) "GPU/NPU" else "CPU"
+        val backend = "CPU"
         Log.i(TAG, "Creating $backend session for ${slot.name}: ${file.length() / 1024 / 1024} MB")
 
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(file.absolutePath)
             .setMaxTokens(MAX_TOKENS)
-            .setMaxTopK(TOP_K)
-            .setPreferredBackend(LlmInference.Backend.GPU)
+            .setTopK(TOP_K)
             .build()
 
         val session = LlmInference.createFromOptions(context, options)
