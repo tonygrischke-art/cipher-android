@@ -156,6 +156,17 @@ class LiteRTEngine(
         return File(modelDir, slot.fileName)
     }
 
+    private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 30_000L) {
+        val start = System.currentTimeMillis()
+        while (!modelsCopied) {
+            if (System.currentTimeMillis() - start > timeoutMs) {
+                Log.w(TAG, "Timeout waiting for model copy, using source dir")
+                return
+            }
+            kotlinx.coroutines.delay(500)
+        }
+    }
+
     fun isModelAvailable(slot: ModelSlot): Boolean = modelFile(slot).exists()
 
     fun getAvailableModels(): List<ModelSlot> =
@@ -203,8 +214,10 @@ class LiteRTEngine(
         withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
 
+            // Wait for model copy to complete (up to 30s)
+            waitForModel(slot)
+
             // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
-            // Skip NPU for CHAT (.task files are MediaPipe bundles, not raw NPU binaries)
             if (NeuronBridge.isAvailable && slot != ModelSlot.CHAT) {
                 val modelFile = modelFile(slot)
                 if (modelFile.exists()) {
