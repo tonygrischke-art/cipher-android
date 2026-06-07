@@ -64,13 +64,7 @@ class OnboardingActivity : ComponentActivity() {
 
     private lateinit var prefs: SharedPreferences
 
-    // Fix 1: Use ActivityResult launcher for overlay permission instead of raw startActivity
-    private val overlayPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        // Fix 3: Check permission on return, don't assume it was granted
-        // No-op here — onResume() handles the check
-    }
+    // NOTE: overlayPermissionLauncher removed — permissions granted via shell.
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -90,8 +84,7 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         onComplete = { markCompleteAndProceed() },
-                        onSkip = { markCompleteAndProceed() },
-                        overlayPermissionLauncher = overlayPermissionLauncher
+                        onSkip = { markCompleteAndProceed() }
                     )
                 }
             }
@@ -188,8 +181,7 @@ class OnboardingViewModel @Inject constructor(
 @Composable
 fun OnboardingFlow(
     onComplete: () -> Unit,
-    onSkip: () -> Unit,
-    overlayPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>
+    onSkip: () -> Unit
 ) {
     val viewModel: OnboardingViewModel = hiltViewModel()
 
@@ -264,7 +256,7 @@ fun OnboardingFlow(
             ) { page ->
                 when (page) {
                     0 -> WelcomePage(viewModel)
-                    1 -> PermissionsPage(viewModel, overlayPermissionLauncher)
+                    1 -> PermissionsPage(viewModel)
                     2 -> AccessibilityPage(viewModel)
                     3 -> ShizukuPage(viewModel)
                     4 -> WakeWordPage(viewModel)
@@ -373,7 +365,7 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
 // ── Page 1: Permissions ──────────────────────────────────────────
 
 @Composable
-fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>) {
+fun PermissionsPage(viewModel: OnboardingViewModel) {
     val context = LocalContext.current
 
     val permissions = listOf(
