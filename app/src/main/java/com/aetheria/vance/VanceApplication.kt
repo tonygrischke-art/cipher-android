@@ -2,7 +2,6 @@ package com.aetheria.vance
 
 import android.app.Application
 import android.util.Log
-import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,6 +13,10 @@ class VanceApplication : Application() {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    companion object {
+        private const val COPY_FLAG = ".models_copied"
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.i("VanceApplication", "onCreate — starting model copy")
@@ -21,6 +24,13 @@ class VanceApplication : Application() {
     }
 
     private fun copyModelsIfNeeded() {
+        // Check if already copied (flag file exists)
+        val flagFile = File(filesDir, COPY_FLAG)
+        if (flagFile.exists()) {
+            Log.i("VanceApplication", "Models already copied (flag exists)")
+            return
+        }
+
         appScope.launch {
             try {
                 val srcDir = File("/data/local/tmp/cipher_models/")
@@ -42,7 +52,9 @@ class VanceApplication : Application() {
                         }
                     }
                 }
-                Log.i("VanceApplication", "Model copy complete")
+                // Write flag file to indicate copy is complete
+                flagFile.writeText(System.currentTimeMillis().toString())
+                Log.i("VanceApplication", "Model copy complete — flag written")
             } catch (e: Exception) {
                 Log.e("VanceApplication", "Model copy error: ${e.message}")
             }

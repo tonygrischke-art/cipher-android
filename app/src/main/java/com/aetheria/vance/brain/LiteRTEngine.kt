@@ -42,9 +42,6 @@ class LiteRTEngine(
         private const val NPU_COMPILE_TIMEOUT_MS = 30_000L
     }
 
-    @Volatile
-    private var modelsCopied = false
-
     enum class ModelSlot(val fileName: String) {
         ACTION("mobile_actions_q8_ekv1024.litertlm"),
         REASONING("gemma-3n-E2B-it-int4.litertlm"),
@@ -126,6 +123,7 @@ class LiteRTEngine(
                 }
             }
         }
+        Log.i(TAG, "All models copied to filesDir")
     }
 
     /**
@@ -157,14 +155,20 @@ class LiteRTEngine(
     }
 
     private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 30_000L) {
+        val flagFile = File(context.filesDir, ".models_copied")
+        // Quick check — if flag exists, models are ready
+        if (flagFile.exists()) return
+
+        // Wait for flag file to appear (models still copying)
         val start = System.currentTimeMillis()
-        while (!modelsCopied) {
+        while (!flagFile.exists()) {
             if (System.currentTimeMillis() - start > timeoutMs) {
-                Log.w(TAG, "Timeout waiting for model copy, using source dir")
+                Log.w(TAG, "Timeout waiting for model copy after ${timeoutMs}ms, using source dir")
                 return
             }
             kotlinx.coroutines.delay(500)
         }
+        Log.i(TAG, "Model copy flag detected, models ready")
     }
 
     fun isModelAvailable(slot: ModelSlot): Boolean = modelFile(slot).exists()
