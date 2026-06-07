@@ -20,7 +20,7 @@ import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
 import android.content.pm.ServiceInfo
 import com.aetheria.vance.core.VanceCoreService
-import com.aetheria.vance.ui.MainActivity
+import com.aetheria.vance.ui.VanceChatActivity
 import java.util.Locale
 
 /**
@@ -99,7 +99,7 @@ class WakeWordService : Service() {
 
     private fun startForeground(withMicrophone: Boolean = false) {
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, VanceChatActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

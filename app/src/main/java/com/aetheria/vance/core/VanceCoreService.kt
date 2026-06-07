@@ -23,7 +23,7 @@ import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.notifications.VanceNotificationListener
 import com.aetheria.vance.ui.FloatingOrbService
-import com.aetheria.vance.ui.MainActivity
+import com.aetheria.vance.ui.VanceChatActivity
 import com.aetheria.vance.voice.VoicePipeline
 import com.aetheria.vance.voice.WakeWordService
 import dagger.hilt.android.AndroidEntryPoint
@@ -340,7 +340,7 @@ class VanceCoreService : Service() {
 
     private fun startForeground(withMicrophone: Boolean = false) {
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, VanceChatActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
