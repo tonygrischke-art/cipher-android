@@ -124,9 +124,9 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // MediaPipe LiteRT LLM
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
-    implementation("com.google.mediapipe:tasks-core:0.10.14")
+    // MediaPipe LiteRT LLM — upgraded to 0.10.35 for GPU/NPU backend support
+    implementation("com.google.mediapipe:tasks-genai:0.10.35")
+    implementation("com.google.mediapipe:tasks-core:0.10.35")
 
     // TensorFlow Lite — NNAPI delegate for MediaTek MT6878 NPU
     implementation("org.tensorflow:tensorflow-lite:2.15.0")

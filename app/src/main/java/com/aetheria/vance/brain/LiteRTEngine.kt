@@ -1,8 +1,6 @@
 package com.aetheria.vance.brain
 
 import android.util.Log
-import com.google.mediapipe.tasks.core.BaseOptions
-import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.lang.reflect.Field
 
 /**
  * On-device inference engine with NPU acceleration via MediaTek Neuron Adapter.
@@ -186,6 +183,7 @@ class LiteRTEngine(
             .setTopK(TOP_K)
             .setTemperature(TEMPERATURE)
             .setRandomSeed(RANDOM_SEED)
+            .setPreferredBackend(LlmInference.Backend.GPU)
             .build()
 
         val session = LlmInference.createFromOptions(context, options)
