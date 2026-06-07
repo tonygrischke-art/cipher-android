@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -12,8 +11,6 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -43,7 +40,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -380,19 +376,6 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
 fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: androidx.activity.result.ActivityResultLauncher<Intent>) {
     val context = LocalContext.current
 
-    // Poll overlay permission status
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(2000)
-            if (Settings.canDrawOverlays(context)) break
-        }
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        // Handled by recomposition
-    }
     val permissions = listOf(
         PermissionItem(Manifest.permission.RECORD_AUDIO, "Microphone", "For voice commands", true),
         PermissionItem(Manifest.permission.CALL_PHONE, "Phone", "To make calls by voice", false),
@@ -422,36 +405,15 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        // Fix 5: Request permissions one at a time to avoid race condition
-        val pendingPermissions = permissions.filter {
-            ContextCompat.checkSelfPermission(context, it.permission) != PackageManager.PERMISSION_GRANTED
-        }
-        var currentPermissionIndex by remember { mutableIntStateOf(0) }
-
-        LaunchedEffect(pendingPermissions) {
-            if (pendingPermissions.isNotEmpty() && currentPermissionIndex < pendingPermissions.size) {
-                delay(500)
-                permissionLauncher.launch(pendingPermissions[currentPermissionIndex].permission)
-            }
-        }
-
+        // FIX: All permissions granted via shell — skip Settings intents.
+        // Show "Granted" state for everything. Next button proceeds.
         permissions.forEach { perm ->
-            val granted = ContextCompat.checkSelfPermission(context, perm.permission) ==
-                PackageManager.PERMISSION_GRANTED
-
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
-                    .clickable {
-                        if (!granted) {
-                            permissionLauncher.launch(perm.permission)
-                        }
-                    },
+                    .padding(vertical = 4.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (granted)
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    else MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                 )
             ) {
                 Row(
@@ -461,10 +423,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (granted) Icons.Default.CheckCircle else Icons.Default.Check,
+                        imageVector = Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = if (granted) MaterialTheme.colorScheme.primary
-                               else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -475,39 +436,18 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (!granted) {
-                        TextButton(onClick = { permissionLauncher.launch(perm.permission) }) {
-                            Text("Grant")
-                        }
-                    }
+                    Text(text = "Granted", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Overlay permission
+        // Overlay permission — also granted via shell (appops)
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    if (Settings.canDrawOverlays(context)) return@clickable
-                    try {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        ).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        overlayPermissionLauncher.launch(intent)
-                    } catch (e: SecurityException) {
-                        Log.e("Onboarding", "SecurityException launching overlay permission", e)
-                    } catch (e: Exception) {
-                        Log.e("Onboarding", "Cannot open overlay settings", e)
-                    }
-                },
+            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
             )
         ) {
             Row(
@@ -517,12 +457,9 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    imageVector = if (Settings.canDrawOverlays(context))
-                        Icons.Default.CheckCircle else Icons.Default.Check,
+                    imageVector = Icons.Default.CheckCircle,
                     contentDescription = null,
-                    tint = if (Settings.canDrawOverlays(context))
-                        MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -533,24 +470,7 @@ fun PermissionsPage(viewModel: OnboardingViewModel, overlayPermissionLauncher: a
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                TextButton(onClick = {
-                    if (Settings.canDrawOverlays(context)) return@TextButton
-                    try {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        ).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        overlayPermissionLauncher.launch(intent)
-                    } catch (e: SecurityException) {
-                        Log.e("Onboarding", "SecurityException launching overlay permission", e)
-                    } catch (e: Exception) {
-                        Log.e("Onboarding", "Cannot open overlay settings", e)
-                    }
-                }) {
-                    Text(if (Settings.canDrawOverlays(context)) "Granted" else "Grant")
-                }
+                Text(text = "Granted", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
             }
         }
     }

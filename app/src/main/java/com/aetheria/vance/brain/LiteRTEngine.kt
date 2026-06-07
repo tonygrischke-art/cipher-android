@@ -73,7 +73,13 @@ class LiteRTEngine(
         // This prevents kernel panic on MT6878 when Hilt constructs the singleton
         // during app startup — the NPU driver may not be ready at that point.
         Log.i(TAG, "LiteRTEngine created. NPU will be initialized on first use (npuBridge=${if (npuBridge != null) "injected" else "null"})")
-        copyModelsIfNeeded(context)
+
+        // ANR FIX: Copy models on background thread — fire and forget.
+        // Do NOT block init / main thread for multi-GB file copies.
+        @Suppress("BlockingMethodInNonBlockingContext")
+        CoroutineScope(Dispatchers.IO).launch {
+            copyModelsIfNeeded(context)
+        }
 
         // NPU smoke test — disabled: NeuronBridge buildModel crashes on real TFLite models
         // TODO: Replace with MediaPipe NNAPI delegate or pre-compiled .dla files
