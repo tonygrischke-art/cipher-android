@@ -117,12 +117,13 @@ class LiteRTEngine(
      */
     private fun openOffsetZip(file: File, offset: Int): ZipFile {
         val channel = FileInputStream(file).channel
-        channel.position(offset.toLong())
+        val offsetL = offset.toLong()
+        channel.position(offsetL)
         // Read all remaining bytes and create a temp zip
-        val size = file.length() - offset
+        val size = file.length() - offsetL
         val tempFile = File.createTempFile("task_validate", ".zip", context.cacheDir)
         tempFile.deleteOnExit()
-        val srcBuf = channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, offset, size)
+        val srcBuf = channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, offsetL, size)
         val dstBuf = FileOutputStream(tempFile).channel.map(java.nio.channels.FileChannel.MapMode.READ_WRITE, 0, size)
         dstBuf.put(srcBuf)
         channel.close()
