@@ -10,8 +10,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.tensorflow.lite.Interpreter
 import java.io.File
-
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.zip.ZipFile
 /**
  * On-device inference engine with NPU acceleration via MediaTek Neuron Adapter.
  *
@@ -42,6 +45,9 @@ class LiteRTEngine(
      * Validate model file before MediaPipe session creation.
      * MediaPipe's LlmInferenceEngine_CreateSession calls abort() on invalid models — cannot be caught.
      * This guard prevents the crash by rejecting models that are known to cause SIGABRT.
+     *
+     * For .task bundles: validates the zip contains at least one .tflite entry and
+     * the TFLite header is readable (flatbuffer magic bytes).
      */
     private fun isValidMediaPipeModel(file: File): Boolean {
         if (!file.exists()) return false
@@ -56,11 +62,71 @@ class LiteRTEngine(
             return false
         }
         // Only .task, .litertlm, .bin are valid MediaPipe LLM formats
-        val valid = file.extension in listOf("task", "litertlm", "bin")
-        if (!valid) {
+        if (file.extension !in listOf("task", "litertlm", "bin")) {
             Log.w(TAG, "Model ${file.name} extension '.${file.extension}' not valid for MediaPipe")
+            return false
         }
-        return valid
+        // For .task bundles: validate internal structure
+        if (file.extension == "task") {
+            return validateTaskBundle(file)
+        }
+        return true
+    }
+
+    /**
+     * Validate a .task MediaPipe bundle by checking:
+     * 1. It can be opened as a zip (even with a header prefix)
+     * 2. It contains at least one TFLite model entry
+     * 3. The TFLite model starts with valid flatbuffer magic bytes
+     */
+    private fun validateTaskBundle(file: File): Boolean {
+        return try {
+            val zf = ZipFile(file)
+            val entries = zf.entries().asSequence().toList()
+            zf.close()
+            // Check for at least one .tflite entry inside the bundle
+            val tfliteEntries = entries.filter { it.name.endsWith(".tflite") }
+            if (tfliteEntries.isEmpty()) {
+                Log.w(TAG, "Task bundle ${file.name} contains no .tflite entries — invalid bundle")
+                return false
+            }
+            Log.d(TAG, "Task bundle ${file.name}: ${entries.size} entries, ${tfliteEntries.size} TFLite model(s)")
+            true
+        } catch (e: Exception) {
+            // Try with offset — some .task files have a 4-byte header before the zip data
+            try {
+                val zf = openOffsetZip(file, 4)
+                val entries = zf.entries().asSequence().toList()
+                zf.close()
+                val tfliteEntries = entries.filter { it.name.endsWith(".tflite") }
+                if (tfliteEntries.isEmpty()) {
+                    Log.w(TAG, "Task bundle ${file.name} (offset) contains no .tflite entries")
+                    return false
+                }
+                Log.d(TAG, "Task bundle ${file.name} (offset 4): ${entries.size} entries, ${tfliteEntries.size} TFLite model(s)")
+                true
+            } catch (e2: Exception) {
+                Log.w(TAG, "Task bundle ${file.name} is not a valid zip (even with offset): ${e2.message}")
+                false
+            }
+        }
+    }
+
+    /**
+     * Open a zip file that may have a header prefix before the actual zip data.
+     */
+    private fun openOffsetZip(file: File, offset: Int): ZipFile {
+        val channel = FileInputStream(file).channel
+        channel.position(offset.toLong())
+        // Read all remaining bytes and create a temp zip
+        val size = file.length() - offset
+        val tempFile = File.createTempFile("task_validate", ".zip", context.cacheDir)
+        tempFile.deleteOnExit()
+        val srcBuf = channel.map(java.nio.channels.FileChannel.MapMode.READ_ONLY, offset, size)
+        val dstBuf = FileOutputStream(tempFile).channel.map(java.nio.channels.FileChannel.MapMode.READ_WRITE, 0, size)
+        dstBuf.put(srcBuf)
+        channel.close()
+        return ZipFile(tempFile)
     }
 
     enum class ModelSlot(val fileName: String) {
