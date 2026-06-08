@@ -5,6 +5,7 @@ import android.util.Log
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.File
+import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -58,6 +59,16 @@ class TfliteLlmEngine(private val context: Context) {
     fun init(modelFile: File): Boolean {
         Log.i(TAG, "init: loading ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
         return try {
+            // Validate model file header
+            val header = ByteArray(4)
+            FileInputStream(modelFile).use { it.read(header) }
+            val magic = String(header, Charsets.US_ASCII)
+            Log.i(TAG, "Model file header: '$magic' (hex: ${header.contentToString()})")
+            if (magic != "TFL3") {
+                Log.e(TAG, "Invalid TFLite model header: expected 'TFL3', got '$magic'")
+                return false
+            }
+
             // Try NNAPI NPU delegate first
             try {
                 val nnApiOptions = NnApiDelegate.Options()
