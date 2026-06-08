@@ -15,16 +15,14 @@ import java.io.File
 /**
  * On-device inference engine with NPU acceleration via MediaTek Neuron Adapter.
  *
- * Two model slots:
- *   - ACTION    → mobile_actions_q8_ekv1024.litertlm  (functiongemma-270m, device actions)
- *   - REASONING → gemma-3n-E2B-it-int4.litertlm      (gemma-3n, general reasoning)
+ * Model slots:
+ *   ACTION    → mobile_actions_q8_ekv1024.litertlm  (276MB, device actions)
+ *   REASONING → qwen05.task                         (521MB, general reasoning)
+ *   CHAT      → qwen05.task                         (521MB, conversation)
+ *   TEST      → mobilenet_test.tflite               (3.4MB, TfliteEngine NPU smoke test — NOT MediaPipe)
  *
- * NPU Integration:
- *   - Attempts NPU execution first via libneuron_adapter_mgvi.so
- *   - Falls back to CPU delegate if NPU compilation fails
- *   - Falls back to Groq if local models are unavailable
- *
- * CRASH FIX: NpuBridge is injected by Hilt. If null or !isAvailable, skips NPU → Groq fallback.
+ * CRASH GUARD: MediaPipe's LlmInferenceEngine_CreateSession calls abort() on invalid models.
+ * isValidMediaPipeModel() validates BEFORE any session creation. Invalid models skip to Groq.
  */
 class LiteRTEngine(
     private val context: android.content.Context,
@@ -34,21 +32,42 @@ class LiteRTEngine(
 
     companion object {
         private const val TAG = "LiteRTEngine"
-        private const val ACTION_MODEL = "mobile_actions_q8_ekv1024.litertlm"
-        private const val REASONING_MODEL = "gemma-3n-E2B-it-int4.litertlm"
         private const val MAX_TOKENS = 1024
         private const val TOP_K = 40
         private const val INFERENCE_TIMEOUT_MS = 45_000L
         private const val NPU_COMPILE_TIMEOUT_MS = 30_000L
     }
 
+    /**
+     * Validate model file before MediaPipe session creation.
+     * MediaPipe's LlmInferenceEngine_CreateSession calls abort() on invalid models — cannot be caught.
+     * This guard prevents the crash by rejecting models that are known to cause SIGABRT.
+     */
+    private fun isValidMediaPipeModel(file: File): Boolean {
+        if (!file.exists()) return false
+        // >2GB = definitely will crash (gemma-3n is 3.4GB)
+        if (file.length() > 2_000_000_000L) {
+            Log.w(TAG, "Model ${file.name} too large (${file.length() / 1024 / 1024}MB > 2GB) — skip MediaPipe")
+            return false
+        }
+        // Raw .tflite is NOT a MediaPipe LLM model — would crash
+        if (file.extension == "tflite") {
+            Log.w(TAG, "Model ${file.name} is raw TFLite — not valid for MediaPipe LLM")
+            return false
+        }
+        // Only .task, .litertlm, .bin are valid MediaPipe LLM formats
+        val valid = file.extension in listOf("task", "litertlm", "bin")
+        if (!valid) {
+            Log.w(TAG, "Model ${file.name} extension '.${file.extension}' not valid for MediaPipe")
+        }
+        return valid
+    }
+
     enum class ModelSlot(val fileName: String) {
-        ACTION("mobile_actions_q8_ekv1024.litertlm"),
-        REASONING("gemma-3n-E2B-it-int4.litertlm"),
-        CODING("vibethinker-1.5b.litertlm"),      // abliterated coding model
-        VISION("gemma-4-E2B-vision.litertlm"),    // image/video understanding
-        CHAT("qwen05.task"),                        // Qwen 0.5B chat via MediaPipe Task bundle
-        TEST("hermes_int8.tflite")                   // NPU smoke test (80MB int8 model)
+        ACTION("mobile_actions_q8_ekv1024.litertlm"),  // 276MB MediaPipe bundle — device actions
+        REASONING("qwen05.task"),                        // 521MB MediaPipe Task bundle — general reasoning
+        CHAT("qwen05.task"),                             // 521MB MediaPipe Task bundle — conversation
+        TEST("mobilenet_test.tflite")                    // 3.4MB raw TFLite — TfliteEngine NPU smoke test only
     }
 
     enum class ComputeBackend { NPU, CPU, GPU, UNAVAILABLE }
@@ -195,10 +214,10 @@ class LiteRTEngine(
         val file = modelFile(slot)
         if (!file.exists()) throw ModelNotFoundException(slot.name, file.absolutePath)
 
-        // For CHAT slot, ensure model is in filesDir (not source dir) to avoid MediaPipe crash
-        if (slot == ModelSlot.CHAT && file.absolutePath.startsWith("/data/local/tmp")) {
-            Log.w(TAG, "CHAT model not yet copied to filesDir, skipping MediaPipe session")
-            throw ModelNotFoundException(slot.name, "pending copy to filesDir")
+        // CRASH GUARD: MediaPipe abort() cannot be caught. Validate model BEFORE session creation.
+        if (!isValidMediaPipeModel(file)) {
+            Log.w(TAG, "Model ${file.name} failed validation — skipping MediaPipe, will use Groq")
+            throw ModelNotFoundException(slot.name, "invalid for MediaPipe: ${file.name}")
         }
 
         val backend = "CPU"
@@ -228,7 +247,8 @@ class LiteRTEngine(
             waitForModel(slot)
 
             // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
-            if (NeuronBridge.isAvailable && slot != ModelSlot.CHAT) {
+            // Skip for CHAT (MediaPipe .task) and TEST (uses TfliteEngine separately)
+            if (NeuronBridge.isAvailable && slot != ModelSlot.CHAT && slot != ModelSlot.TEST) {
                 val modelFile = modelFile(slot)
                 if (modelFile.exists()) {
                     val result = tryNeuronBridge(prompt, slot, modelFile, startTime)
@@ -238,7 +258,7 @@ class LiteRTEngine(
             }
 
             // ── Try legacy NpuBridge second ─────────────────────────────────
-            if (slot != ModelSlot.CHAT && ensureNpuInitialized() && npuBridge != null) {
+            if (slot != ModelSlot.CHAT && slot != ModelSlot.TEST && ensureNpuInitialized() && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult
@@ -276,23 +296,10 @@ class LiteRTEngine(
     private fun tryNeuronBridge(
         prompt: String, slot: ModelSlot, modelFile: File, startTime: Long
     ): InferenceResult? {
-        Log.i("LiteRTEngine", "NPU: tryNeuronBridge() called — checking model files")
+        Log.i(TAG, "NPU: tryNeuronBridge slot=${slot.name} model=${modelFile.name} size=${modelFile.length()/1024/1024}MB")
         return try {
-            // For TEST slot, use mobilenet_test.tflite from filesDir (3.4MB valid TFLite)
-            val npuModelFile = if (slot == ModelSlot.TEST) {
-                val f = File(context.filesDir, "mobilenet_test.tflite")
-                if (f.exists()) {
-                    Log.i(TAG, "NPU TEST: using mobilenet_test.tflite from filesDir (${f.length()/1024}KB)")
-                    f
-                } else {
-                    Log.w(TAG, "NPU TEST: mobilenet_test.tflite not found in filesDir, falling back to ${modelFile.name}")
-                    modelFile
-                }
-            } else modelFile
-
-            Log.i(TAG, "NPU: nativeInit slot=${slot.name} model=${npuModelFile.name} size=${npuModelFile.length()/1024/1024}MB path=${npuModelFile.absolutePath}")
             val handle = try {
-                NeuronBridge.nativeInit(npuModelFile.absolutePath, context.cacheDir.absolutePath)
+                NeuronBridge.nativeInit(modelFile.absolutePath, context.cacheDir.absolutePath)
             } catch (e: Throwable) {
                 Log.e(TAG, "NPU: nativeInit threw for ${slot.name}: ${e.message}")
                 0L
