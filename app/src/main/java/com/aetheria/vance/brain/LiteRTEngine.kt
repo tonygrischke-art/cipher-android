@@ -320,15 +320,16 @@ class LiteRTEngine(
             // Wait for model copy to complete (up to 30s)
             waitForModel(slot)
 
-            // ── LLM slots (REASONING, CHAT): TfliteLlmEngine (raw TFLite + NNAPI) ──
+            // ── LLM slots (REASONING, CHAT): TfliteLlmEngine via MediaPipe LlmInference ──
+            // Loads .litertlm directly from /data/local/tmp/cipher_models/ — no copy needed
             if (slot.isLlm) {
                 val result = tryTfliteLlm(prompt, slot, startTime)
                 if (result != null) return@withContext result
-                Log.w(TAG, "TfliteLlmEngine failed for ${slot.name}, falling through")
+                Log.w(TAG, "TfliteLlmEngine failed for ${slot.name}, falling through to Groq")
                 throw ModelNotFoundException(slot.name, "TfliteLlmEngine failed")
             }
 
-            // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
+            // Wait for model copy to complete (only for non-LLM slots)
             // Skip for LLM slots (handled by TfliteLlmEngine) and TEST (TfliteEngine separately)
             if (NeuronBridge.isAvailable && !slot.isLlm && slot != ModelSlot.TEST) {
                 val modelFile = modelFile(slot)
@@ -373,26 +374,22 @@ class LiteRTEngine(
         }
 
     /**
-     * Try TFLite LLM inference for LLM slots (REASONING, CHAT).
-     * Loads qwen05.tflite via TfliteLlmEngine with NNAPI NPU delegation.
+     * Try LiteRT LLM inference for LLM slots (REASONING, CHAT).
+     * Uses MediaPipe LlmInference API with .litertlm model files.
+     * Loads directly from /data/local/tmp/cipher_models/ — no copy needed.
      */
-    private fun tryTfliteLlm(prompt: String, slot: ModelSlot, startTime: Long): InferenceResult? {
+    private suspend fun tryTfliteLlm(prompt: String, slot: ModelSlot, startTime: Long): InferenceResult? {
         if (!tfliteLlmInitAttempted) {
             tfliteLlmInitAttempted = true
-            val modelFile = modelFile(slot)
-            if (modelFile.exists()) {
-                Log.i(TAG, "TfliteLlmEngine: initializing with ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
-                tfliteLlmEngine = TfliteLlmEngine(context).also { engine ->
-                    val ok = engine.init(modelFile)
-                    if (!ok) {
-                        Log.e(TAG, "TfliteLlmEngine: init failed")
-                        tfliteLlmEngine = null
-                    } else {
-                        Log.i(TAG, "TfliteLlmEngine: init OK")
-                    }
+            Log.i(TAG, "TfliteLlmEngine: initializing (useActionModel=${slot == ModelSlot.ACTION})")
+            tfliteLlmEngine = TfliteLlmEngine(context).also { engine ->
+                val ok = engine.initialize(useActionModel = (slot == ModelSlot.ACTION))
+                if (!ok) {
+                    Log.e(TAG, "TfliteLlmEngine: init failed")
+                    tfliteLlmEngine = null
+                } else {
+                    Log.i(TAG, "TfliteLlmEngine: init OK ✓")
                 }
-            } else {
-                Log.w(TAG, "TfliteLlmEngine: model file not found: ${modelFile.absolutePath}")
             }
         }
 
@@ -400,7 +397,7 @@ class LiteRTEngine(
         return try {
             val text = engine.generate(prompt)
             val elapsed = System.currentTimeMillis() - startTime
-            Log.i(TAG, "TfliteLlmEngine: generated '${text.take(80)}...' in ${elapsed}ms")
+            Log.i(TAG, "TfliteLlmEngine: generated '${text.take(80)}' in ${elapsed}ms")
             InferenceResult(
                 text = text,
                 backend = ComputeBackend.NPU,
@@ -527,8 +524,9 @@ class LiteRTEngine(
         }
         sessions.clear()
         npuBridge?.shutdownNpu()
-        tfliteLlmEngine?.close()
+        tfliteLlmEngine?.release()
         tfliteLlmEngine = null
+        tfliteLlmInitAttempted = false
     }
 
     private fun estimateTokens(text: String): Int {
