@@ -5,11 +5,8 @@ import android.util.Log
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.nnapi.NnApiDelegate
 import java.io.File
-import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
 
 /**
  * TFLite LLM inference engine with NNAPI NPU delegation for MediaTek MT6878.
@@ -50,8 +47,7 @@ class TfliteLlmEngine(private val context: Context) {
     private var nnApiDelegate: NnApiDelegate? = null
 
     // Token IDs for the current generation session
-    private var inputTokens = IntArray(0)
-    private var currentPosition = 0
+    private var promptTokenCount = 0
 
     val isReady: Boolean get() = interpreter != null
 
@@ -62,9 +58,6 @@ class TfliteLlmEngine(private val context: Context) {
     fun init(modelFile: File): Boolean {
         Log.i(TAG, "init: loading ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
         return try {
-            // Map the model file into memory
-            val modelBuffer = mapModelFile(modelFile)
-
             // Try NNAPI NPU delegate first
             try {
                 val nnApiOptions = NnApiDelegate.Options()
@@ -76,13 +69,13 @@ class TfliteLlmEngine(private val context: Context) {
                     .setNumThreads(4)
                     .setUseNNAPI(true)
 
-                interpreter = Interpreter(modelBuffer, options)
+                interpreter = Interpreter(modelFile, options)
                 Log.i(TAG, "NNPU delegate initialized successfully")
                 printTensorInfo()
                 true
             } catch (e: Exception) {
                 Log.w(TAG, "NNAPI delegate failed: ${e.message} — falling back to CPU")
-                tryInitCpu(modelBuffer)
+                tryInitCpu(modelFile)
             }
         } catch (e: Exception) {
             Log.e(TAG, "init failed: ${e.message}")
@@ -90,23 +83,16 @@ class TfliteLlmEngine(private val context: Context) {
         }
     }
 
-    private fun tryInitCpu(modelBuffer: MappedByteBuffer): Boolean {
+    private fun tryInitCpu(modelFile: File): Boolean {
         return try {
             val options = Interpreter.Options().setNumThreads(4)
-            interpreter = Interpreter(modelBuffer, options)
+            interpreter = Interpreter(modelFile, options)
             Log.i(TAG, "CPU fallback initialized successfully")
             printTensorInfo()
             true
         } catch (e: Exception) {
             Log.e(TAG, "CPU fallback also failed: ${e.message}")
             false
-        }
-    }
-
-    private fun mapModelFile(modelFile: File): MappedByteBuffer {
-        val channel = FileInputStream(modelFile).channel
-        return channel.map(FileChannel.MapMode.READ_ONLY, 0, modelFile.length()).apply {
-            order(ByteOrder.nativeOrder())
         }
     }
 
@@ -253,6 +239,7 @@ class TfliteLlmEngine(private val context: Context) {
 
             interp.runForMultipleInputsOutputs(inputs, outputs)
             Log.d(TAG, "Prefill complete: seq_len=$seqLen, outputs=${interp.outputTensorCount}")
+            promptTokenCount = seqLen
 
             // Extract last-token logits from outputBuf0
             extractLastTokenLogits(outputBuf0, outputTensor0.shape(), seqLen)
@@ -282,7 +269,7 @@ class TfliteLlmEngine(private val context: Context) {
             }
 
             // Decode pass: feed single token + position
-            val nextPos = inputTokens.size + outputTokens.size - 1
+            val nextPos = promptTokenCount + outputTokens.size - 1
             val singleToken = ByteBuffer.allocateDirect(4).apply {
                 order(ByteOrder.nativeOrder())
                 putInt(nextToken)
