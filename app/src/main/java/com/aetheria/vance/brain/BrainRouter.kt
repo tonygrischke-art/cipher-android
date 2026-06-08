@@ -13,8 +13,6 @@ import org.json.JSONObject
  *   DEVICE_ACTION → LiteRT ACTION_MODEL (mobile_actions) → Groq llama-3.3-70b fallback
  *   CONVERSATION  → LiteRT CHAT_MODEL (qwen05) → REASONING_MODEL (gemma-3n) → Groq fallback
  *   REASONING     → LiteRT REASONING_MODEL (gemma-3n) → Groq llama-3.3-70b fallback
- *   CODING        → LiteRT CODING_MODEL (vibethinker) → Groq fallback
- *   VISION        → LiteRT VISION_MODEL (gemma-4-vision) → Groq fallback
  *
  * Returns [BrainResult] with optional action JSON and spoken response text.
  */
@@ -46,24 +44,12 @@ class BrainRouter(
             "review", "describe", "define", "translate"
         )
 
-        val CODING_KEYWORDS = listOf(
-            "code", "write", "function", "class", "debug", "fix", "error",
-            "kotlin", "python", "script", "build", "compile", "commit",
-            "github", "repo", "diff", "review", "refactor", "implement"
-        )
-
-        val VISION_KEYWORDS = listOf(
-            "what's on screen", "read screen", "what do you see",
-            "analyze image", "describe photo", "what's in this",
-            "look at", "watch this", "video"
-        )
-
         const val CIPHER_SYSTEM_PROMPT = "You are Cipher, an autonomous AI agent running on an Android device. " +
             "You have access to shell commands via Shizuku, can interact with any app via Accessibility Service, " +
             "and can read/send messages. Be concise. When executing actions respond with JSON action blocks."
     }
 
-    enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION, CODING, VISION }
+    enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION }
 
     data class BrainResult(
         val actionJson: String? = null,
@@ -79,16 +65,12 @@ class BrainRouter(
             Intent.DEVICE_ACTION -> handleDeviceAction(transcript, context)
             Intent.REASONING -> handleReasoning(transcript, context, history)
             Intent.CONVERSATION -> handleConversation(transcript, context, history)
-            Intent.CODING -> handleCoding(transcript, context, history)
-            Intent.VISION -> handleVision(transcript, context, history)
         }
     }
 
     fun classifyIntent(transcript: String): Intent {
         val lower = transcript.lowercase().trim()
         if (DEVICE_ACTION_KEYWORDS.any { lower.contains(it) }) return Intent.DEVICE_ACTION
-        if (VISION_KEYWORDS.any { lower.contains(it) }) return Intent.VISION
-        if (CODING_KEYWORDS.any { lower.contains(it) }) return Intent.CODING
         if (REASONING_KEYWORDS.any { lower.contains(it) }) return Intent.REASONING
         return Intent.CONVERSATION
     }
@@ -218,68 +200,6 @@ class BrainRouter(
         )
     }
 
-    private suspend fun handleCoding(transcript: String, context: String, history: String): BrainResult {
-        val prompt = buildCodingPrompt(transcript, context, history)
-
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.CODING)) {
-            try {
-                val raw = withTimeoutOrNull(45_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.CODING)
-                }
-                if (raw != null) {
-                    return BrainResult(spokenResponse = raw.text.trim())
-                }
-                Log.w(TAG, "Coding model timed out, falling back to Groq")
-            } catch (e: Exception) {
-                Log.w(TAG, "Coding model failed: ${e.message}")
-            }
-        }
-
-        val groqResponse = try {
-            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Groq fallback failed", e)
-            null
-        }
-
-        return BrainResult(
-            spokenResponse = groqResponse?.trim() ?: "Sorry, I couldn't process that coding request right now."
-        )
-    }
-
-    private suspend fun handleVision(transcript: String, context: String, history: String): BrainResult {
-        val prompt = buildVisionPrompt(transcript, context, history)
-
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.VISION)) {
-            try {
-                val raw = withTimeoutOrNull(45_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.VISION)
-                }
-                if (raw != null) {
-                    return BrainResult(spokenResponse = raw.text.trim())
-                }
-                Log.w(TAG, "Vision model timed out, falling back to Groq")
-            } catch (e: Exception) {
-                Log.w(TAG, "Vision model failed: ${e.message}")
-            }
-        }
-
-        val groqResponse = try {
-            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Groq fallback failed", e)
-            null
-        }
-
-        return BrainResult(
-            spokenResponse = groqResponse?.trim() ?: "Sorry, I couldn't analyze that image right now."
-        )
-    }
-
     // ── Prompt formatters ──────────────────────────────────────────
 
     private fun buildActionPrompt(transcript: String, context: String): String =
@@ -295,16 +215,6 @@ class BrainRouter(
     private fun buildConversationPrompt(transcript: String, context: String, history: String): String {
         val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
         return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
-    }
-
-    private fun buildCodingPrompt(transcript: String, context: String, history: String): String {
-        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "You are Cipher, an expert coding assistant. Context: $context$historyBlock\n\nUser: $transcript\n\nRespond with code and explanation."
-    }
-
-    private fun buildVisionPrompt(transcript: String, context: String, history: String): String {
-        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "You are Cipher, a vision AI assistant. Context: $context$historyBlock\n\nUser: $transcript\n\nDescribe what you see in detail."
     }
 
     // ── Response parsing ───────────────────────────────────────────
