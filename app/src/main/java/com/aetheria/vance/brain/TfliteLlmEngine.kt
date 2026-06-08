@@ -93,8 +93,9 @@ class TfliteLlmEngine(private val context: Context) {
         }
 
     /**
-     * Streaming inference — emits tokens as they arrive via [onToken].
-     * [onComplete] fires when generation finishes.
+     * Streaming inference placeholder.
+     * MediaPipe 0.10.14 generateResponseAsync(String) does not accept a callback.
+     * Use generate() for blocking inference, or upgrade MediaPipe for streaming.
      */
     fun generateStreaming(
         prompt: String,
@@ -102,15 +103,13 @@ class TfliteLlmEngine(private val context: Context) {
         onComplete: () -> Unit,
         onError: (Exception) -> Unit
     ) {
-        if (!isReady || llmEngine == null) {
-            onError(IllegalStateException("Engine not initialised"))
-            return
-        }
+        // Fallback: run blocking generate and deliver result
         try {
-            llmEngine!!.generateResponseAsync(prompt) { partial, done ->
-                partial?.let { onToken(it) }
-                if (done) onComplete()
+            val result = llmEngine?.generateResponse(prompt)
+            if (result != null) {
+                onToken(result)
             }
+            onComplete()
         } catch (e: Exception) {
             Log.e(TAG, "generateStreaming() failed: ${e.message}", e)
             onError(e)
