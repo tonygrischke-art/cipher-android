@@ -14,7 +14,6 @@ class VanceApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // Check if models already copied — if not, trigger async copy
         val flagFile = File(filesDir, COPY_FLAG)
         if (!flagFile.exists()) {
             Log.i("VanceApplication", "Models not copied yet — starting background copy")
@@ -40,35 +39,12 @@ class VanceApplication : Application() {
                     }
                     flagFile.writeText(System.currentTimeMillis().toString())
                     Log.i("VanceApplication", "Model copy complete")
-
-                    // TFLite NPU smoke test
-                    runTfliteSmokeTest()
                 } catch (e: Exception) {
                     Log.e("VanceApplication", "Model copy error: ${e.message}")
                 }
             }.start()
         } else {
             Log.i("VanceApplication", "Models already copied (flag exists)")
-            // Run smoke test even if models were already copied
-            runTfliteSmokeTest()
         }
     }
-
-    private fun runTfliteSmokeTest() {
-        Thread {
-            try {
-                val testFile = File(filesDir, "mobilenet_test.tflite")
-                if (!testFile.exists()) {
-                    Log.w("VanceApplication", "Smoke test: mobilenet_test.tflite not found in filesDir")
-                    return@Thread
-                }
-                Log.i("VanceApplication", "Smoke test: initializing TfliteEngine with ${testFile.name} (${testFile.length() / 1024 / 1024}MB)")
-                val engine = com.aetheria.vance.brain.TfliteEngine(this@VanceApplication)
-                val success = engine.init(testFile)
-                Log.i("VanceApplication", "Smoke test: TfliteEngine.init() = $success")
-                engine.close()
-            } catch (e: Exception) {
-                Log.e("VanceApplication", "Smoke test: TfliteEngine failed: ${e.message}")
-            }
-        }.start()
-    }
+}

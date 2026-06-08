@@ -13,13 +13,43 @@ class BootReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
-        Log.i("BootReceiver", "NPU: onReceive action=${intent?.action}")
+        Log.i(TAG, "onReceive action=${intent?.action}")
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED ||
             intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            // NPU smoke test disabled — NeuronBridge buildModel crashes on real TFLite
-        // TODO: Use MediaPipe NNAPI delegate or pre-compiled .dla files instead
-        Log.i(TAG, "Boot/update received — NPU smoke test disabled")
-        // try { runNpuSmokeTest(context) } catch (e: Throwable) { Log.e(TAG, "NPU: ${e.message}") }
+
+            // Wait a moment for Application.onCreate model copy to start
+            Thread {
+                try {
+                    Thread.sleep(2000)
+                    runTfliteSmokeTest(context)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Smoke test thread error: ${e.message}")
+                }
+            }.start()
+        }
+    }
+
+    private fun runTfliteSmokeTest(context: Context) {
+        try {
+            val testFile = File(context.filesDir, "mobilenet_test.tflite")
+            if (!testFile.exists()) {
+                Log.w(TAG, "Smoke test: mobilenet_test.tflite not found, trying source dir")
+                val srcFile = File("/data/local/tmp/cipher_models/mobilenet_test.tflite")
+                if (srcFile.exists()) {
+                    Log.i(TAG, "Smoke test: copying mobilenet_test.tflite from source")
+                    srcFile.copyTo(testFile, overwrite = true)
+                } else {
+                    Log.e(TAG, "Smoke test: mobilenet_test.tflite not found anywhere")
+                    return
+                }
+            }
+            Log.i(TAG, "Smoke test: TfliteEngine.init(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
+            val engine = com.aetheria.vance.brain.TfliteEngine(context)
+            val success = engine.init(testFile)
+            Log.i(TAG, "Smoke test: TfliteEngine.init() = $success")
+            engine.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Smoke test: TfliteEngine failed: ${e.message}")
         }
     }
 
