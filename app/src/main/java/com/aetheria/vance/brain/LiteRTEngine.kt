@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.tensorflow.lite.Interpreter
+
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -130,11 +130,11 @@ class LiteRTEngine(
         return ZipFile(tempFile)
     }
 
-    enum class ModelSlot(val fileName: String) {
-        ACTION("mobile_actions_q8_ekv1024.litertlm"),  // 276MB MediaPipe bundle — device actions
-        REASONING("qwen05.task"),                        // 521MB MediaPipe Task bundle — general reasoning
-        CHAT("qwen05.task"),                             // 521MB MediaPipe Task bundle — conversation
-        TEST("mobilenet_test.tflite")                    // 3.4MB raw TFLite — TfliteEngine NPU smoke test only
+    enum class ModelSlot(val fileName: String, val isLlm: Boolean = false) {
+        ACTION("mobile_actions_q8_ekv1024.litertlm"),       // 276MB MediaPipe bundle — device actions (classification)
+        REASONING("qwen05.tflite", isLlm = true),           // 544MB raw TFLite — LLM via TfliteLlmEngine (NNAPI)
+        CHAT("qwen05.tflite", isLlm = true),                // 544MB raw TFLite — LLM via TfliteLlmEngine (NNAPI)
+        TEST("mobilenet_test.tflite")                       // 3.4MB raw TFLite — TfliteEngine NPU smoke test only
     }
 
     enum class ComputeBackend { NPU, CPU, GPU, UNAVAILABLE }
@@ -147,6 +147,10 @@ class LiteRTEngine(
     )
 
     private val sessions = mutableMapOf<ModelSlot, LlmInference>()
+
+    // TFLite LLM engine for REASONING slot (qwen05.tflite via NNAPI)
+    private var tfliteLlmEngine: TfliteLlmEngine? = null
+    private var tfliteLlmInitAttempted = false
 
     // NpuBridge is injected by Hilt via AppModule. May be null if NPU is unavailable.
     private var npuAvailable = false
@@ -305,6 +309,9 @@ class LiteRTEngine(
     /**
      * Blocking full-response inference with NPU priority.
      * Attempts NPU first, falls back to CPU if compilation fails.
+     *
+     * REASONING slot uses TfliteLlmEngine (raw TFLite + NNAPI), bypassing MediaPipe.
+     * CHAT/ACTION slots use MediaPipe LiteRT.
      */
     suspend fun generate(prompt: String, slot: ModelSlot): InferenceResult =
         withContext(Dispatchers.IO) {
@@ -313,9 +320,17 @@ class LiteRTEngine(
             // Wait for model copy to complete (up to 30s)
             waitForModel(slot)
 
+            // ── LLM slots (REASONING, CHAT): TfliteLlmEngine (raw TFLite + NNAPI) ──
+            if (slot.isLlm) {
+                val result = tryTfliteLlm(prompt, slot, startTime)
+                if (result != null) return@withContext result
+                Log.w(TAG, "TfliteLlmEngine failed for ${slot.name}, falling through")
+                throw ModelNotFoundException(slot.name, "TfliteLlmEngine failed")
+            }
+
             // ── Try NeuronBridge (direct NeuroPilot NPU) first ──────────────
-            // Skip for CHAT (MediaPipe .task) and TEST (uses TfliteEngine separately)
-            if (NeuronBridge.isAvailable && slot != ModelSlot.CHAT && slot != ModelSlot.TEST) {
+            // Skip for LLM slots (handled by TfliteLlmEngine) and TEST (TfliteEngine separately)
+            if (NeuronBridge.isAvailable && !slot.isLlm && slot != ModelSlot.TEST) {
                 val modelFile = modelFile(slot)
                 if (modelFile.exists()) {
                     val result = tryNeuronBridge(prompt, slot, modelFile, startTime)
@@ -325,7 +340,7 @@ class LiteRTEngine(
             }
 
             // ── Try legacy NpuBridge second ─────────────────────────────────
-            if (slot != ModelSlot.CHAT && slot != ModelSlot.TEST && ensureNpuInitialized() && npuBridge != null) {
+            if (!slot.isLlm && slot != ModelSlot.TEST && ensureNpuInitialized() && npuBridge != null) {
                 val npuResult = tryNpuInference(prompt, slot)
                 if (npuResult != null) {
                     return@withContext npuResult
@@ -356,6 +371,47 @@ class LiteRTEngine(
             }
             result
         }
+
+    /**
+     * Try TFLite LLM inference for LLM slots (REASONING, CHAT).
+     * Loads qwen05.tflite via TfliteLlmEngine with NNAPI NPU delegation.
+     */
+    private fun tryTfliteLlm(prompt: String, slot: ModelSlot, startTime: Long): InferenceResult? {
+        if (!tfliteLlmInitAttempted) {
+            tfliteLlmInitAttempted = true
+            val modelFile = modelFile(slot)
+            if (modelFile.exists()) {
+                Log.i(TAG, "TfliteLlmEngine: initializing with ${modelFile.name} (${modelFile.length() / 1024 / 1024}MB)")
+                tfliteLlmEngine = TfliteLlmEngine(context).also { engine ->
+                    val ok = engine.init(modelFile)
+                    if (!ok) {
+                        Log.e(TAG, "TfliteLlmEngine: init failed")
+                        tfliteLlmEngine = null
+                    } else {
+                        Log.i(TAG, "TfliteLlmEngine: init OK")
+                    }
+                }
+            } else {
+                Log.w(TAG, "TfliteLlmEngine: model file not found: ${modelFile.absolutePath}")
+            }
+        }
+
+        val engine = tfliteLlmEngine ?: return null
+        return try {
+            val text = engine.generate(prompt)
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.i(TAG, "TfliteLlmEngine: generated '${text.take(80)}...' in ${elapsed}ms")
+            InferenceResult(
+                text = text,
+                backend = ComputeBackend.NPU,
+                inferenceTimeMs = elapsed,
+                tokensGenerated = estimateTokens(text)
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "TfliteLlmEngine: generation failed: ${e.message}", e)
+            null
+        }
+    }
 
     /**
      * Attempt NPU inference via NeuronBridge (libneuronusdk_adapter.mtk.so).
@@ -471,6 +527,8 @@ class LiteRTEngine(
         }
         sessions.clear()
         npuBridge?.shutdownNpu()
+        tfliteLlmEngine?.close()
+        tfliteLlmEngine = null
     }
 
     private fun estimateTokens(text: String): Int {
