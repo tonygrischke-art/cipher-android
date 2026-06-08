@@ -134,8 +134,11 @@ class TfliteLlmEngine(private val context: Context) {
                 return "[prefill failed]"
             }
 
+            val (logits, kvCache) = prefillResult
+            Log.d(TAG, "Prefill logits size: ${logits.size}, kvCache entries: ${kvCache.size}")
+
             // Decode: generate tokens one at a time
-            val outputTokens = decodeLoop(interp, prefillResult)
+            val outputTokens = decodeLoop(interp, logits, kvCache.toMutableMap())
             Log.d(TAG, "Generated ${outputTokens.size} tokens")
 
             // Detokenized output
@@ -195,54 +198,55 @@ class TfliteLlmEngine(private val context: Context) {
 
     /**
      * Prefill pass: feed all prompt tokens at once to fill the KV cache.
-     * Returns the logits for the last token position.
+     * Returns Pair of (logits FloatArray, KV cache outputs map).
      */
-    private fun prefill(interp: Interpreter, tokens: IntArray): FloatArray? {
+    private fun prefill(interp: Interpreter, tokens: IntArray): Pair<FloatArray, Map<Int, ByteBuffer>>? {
         return try {
             val seqLen = tokens.size
 
             // Input 0: tokens [1, seq_len]
-            val inputTokens = ByteBuffer.allocateDirect(seqLen * 4).apply {
+            val inputTokensBuf = ByteBuffer.allocateDirect(seqLen * 4).apply {
                 order(ByteOrder.nativeOrder())
                 for (t in tokens) putInt(t)
                 rewind()
             }
 
             // Input 1: position IDs [1, seq_len]
-            val inputPos = ByteBuffer.allocateDirect(seqLen * 4).apply {
+            val inputPosBuf = ByteBuffer.allocateDirect(seqLen * 4).apply {
                 order(ByteOrder.nativeOrder())
                 for (i in tokens.indices) putInt(i)
                 rewind()
             }
 
             // Output buffers
-            // Logits: need to figure out vocab size from output tensor shape
             val outputTensor0 = interp.getOutputTensor(0)
             val outputSize0 = outputTensor0.shape().reduce { a, b -> a * b }
             val outputBuf0 = ByteBuffer.allocateDirect(outputSize0 * 4).apply {
                 order(ByteOrder.nativeOrder())
             }
 
-            // Run with multiple inputs/outputs
-            val inputs = arrayOf(inputTokens, inputPos)
+            val inputs = arrayOf(inputTokensBuf, inputPosBuf)
             val outputs = mutableMapOf<Int, Any>()
             outputs[0] = outputBuf0
 
-            // Add KV cache output buffers (output tensors 1+)
+            // KV cache output buffers (output tensors 1+)
+            val kvCacheOutputs = mutableMapOf<Int, ByteBuffer>()
             for (i in 1 until interp.outputTensorCount) {
                 val t = interp.getOutputTensor(i)
                 val bufSize = t.shape().reduce { a, b -> a * b }
-                outputs[i] = ByteBuffer.allocateDirect(bufSize * 4).apply {
+                val buf = ByteBuffer.allocateDirect(bufSize * 4).apply {
                     order(ByteOrder.nativeOrder())
                 }
+                outputs[i] = buf
+                kvCacheOutputs[i] = buf
             }
 
             interp.runForMultipleInputsOutputs(inputs, outputs)
-            Log.d(TAG, "Prefill complete: seq_len=$seqLen, outputs=${interp.outputTensorCount}")
+            Log.d(TAG, "Prefill complete: seqLen=$seqLen, outputs=${interp.outputTensorCount}")
             promptTokenCount = seqLen
 
-            // Extract last-token logits from outputBuf0
-            extractLastTokenLogits(outputBuf0, outputTensor0.shape(), seqLen)
+            val logits = extractLastTokenLogits(outputBuf0, outputTensor0.shape(), seqLen)
+            Pair(logits, kvCacheOutputs)
         } catch (e: Exception) {
             Log.e(TAG, "Prefill failed: ${e.message}", e)
             null
@@ -252,14 +256,12 @@ class TfliteLlmEngine(private val context: Context) {
     /**
      * Decode loop: generate tokens one at a time using the KV cache.
      */
-    private fun decodeLoop(interp: Interpreter, prefillLogits: FloatArray): IntArray {
+    private fun decodeLoop(interp: Interpreter, prefillLogits: FloatArray, kvCache: MutableMap<Int, ByteBuffer>): IntArray {
         val outputTokens = mutableListOf<Int>()
         val maxNewTokens = MAX_NEW_TOKENS
 
-        // Sample first token from prefill logits
         var nextToken = greedyArgmax(prefillLogits)
         outputTokens.add(nextToken)
-
         Log.d(TAG, "First generated token: $nextToken")
 
         for (step in 1 until maxNewTokens) {
@@ -268,7 +270,6 @@ class TfliteLlmEngine(private val context: Context) {
                 break
             }
 
-            // Decode pass: feed single token + position
             val nextPos = promptTokenCount + outputTokens.size - 1
             val singleToken = ByteBuffer.allocateDirect(4).apply {
                 order(ByteOrder.nativeOrder())
@@ -281,35 +282,53 @@ class TfliteLlmEngine(private val context: Context) {
                 rewind()
             }
 
-            // Run decode
-            val decodeResult = try {
-                val outputTensor0 = interp.getOutputTensor(0)
-                val outputSize0 = outputTensor0.shape().reduce { a, b -> a * b }
-                val outputBuf0 = ByteBuffer.allocateDirect(outputSize0 * 4).apply {
+            // Build inputs: [token, pos, kv_cache_0, kv_cache_1, ...]
+            // KV cache input tensor indices: 2, 3, 4, ... (after tokens and pos)
+            // KV cache output tensor indices: 1, 2, 3, ... (after logits at 0)
+            val inputArray = arrayOfNulls<Any>(interp.inputTensorCount)
+            inputArray[0] = singleToken
+            inputArray[1] = singlePos
+            for (kvIdx in kvCache.keys) {
+                // Map: output tensor kvIdx -> input tensor (kvIdx + 1)
+                val inIdx = kvIdx + 1
+                if (inIdx < inputArray.size) {
+                    inputArray[inIdx] = kvCache[kvIdx]
+                }
+            }
+
+            // Build outputs: [logits, kv_cache_0_new, kv_cache_1_new, ...]
+            val outputs = mutableMapOf<Int, Any>()
+            val outputTensor0 = interp.getOutputTensor(0)
+            val outputSize0 = outputTensor0.shape().reduce { a, b -> a * b }
+            val outputBuf0 = ByteBuffer.allocateDirect(outputSize0 * 4).apply {
+                order(ByteOrder.nativeOrder())
+            }
+            outputs[0] = outputBuf0
+
+            val newKvCache = mutableMapOf<Int, ByteBuffer>()
+            for (i in 1 until interp.outputTensorCount) {
+                val t = interp.getOutputTensor(i)
+                val bufSize = t.shape().reduce { a, b -> a * b }
+                val buf = ByteBuffer.allocateDirect(bufSize * 4).apply {
                     order(ByteOrder.nativeOrder())
                 }
-                val outputs = mutableMapOf<Int, Any>()
-                outputs[0] = outputBuf0
-                for (i in 1 until interp.outputTensorCount) {
-                    val t = interp.getOutputTensor(i)
-                    val bufSize = t.shape().reduce { a, b -> a * b }
-                    outputs[i] = ByteBuffer.allocateDirect(bufSize * 4).apply {
-                        order(ByteOrder.nativeOrder())
-                    }
-                }
+                outputs[i] = buf
+                newKvCache[i] = buf
+            }
 
-                interp.runForMultipleInputsOutputs(
-                    arrayOf(singleToken, singlePos), outputs
-                )
-
-                // Extract logits from output
-                extractLastTokenLogits(outputBuf0, outputTensor0.shape(), 1)
+            try {
+                interp.runForMultipleInputsOutputs(inputArray, outputs)
             } catch (e: Exception) {
                 Log.e(TAG, "Decode step $step failed: ${e.message}")
                 break
             }
 
-            nextToken = greedyArgmax(decodeResult)
+            // Update KV cache for next iteration
+            kvCache.clear()
+            kvCache.putAll(newKvCache)
+
+            val logits = extractLastTokenLogits(outputBuf0, outputTensor0.shape(), 1)
+            nextToken = greedyArgmax(logits)
             outputTokens.add(nextToken)
             Log.v(TAG, "Decode step $step: token=$nextToken")
         }
