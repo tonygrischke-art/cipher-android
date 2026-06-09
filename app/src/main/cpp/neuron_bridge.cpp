@@ -261,6 +261,11 @@ static void populateNnApiSL() {
 // JNI Methods
 // ═══════════════════════════════════════════════════════════════════════════
 
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    LOGI("[APU] JNI_OnLoad called — libneuron_bridge.so loaded successfully");
+    return JNI_VERSION_1_6;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     JNIEnv* env, jobject /*thiz*/,

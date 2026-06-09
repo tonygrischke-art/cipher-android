@@ -324,7 +324,14 @@ class LiteRTEngine(
             if (slot.isLlm) {
                 // Tier 1: NeuronBridge NPU with raw .tflite (bypasses MediaPipe crash)
                 if (NeuronBridge.isAvailable) {
-                    val tflitePath = "/data/local/tmp/cipher_models/${slot.fileName.removeSuffix(".task").removeSuffix(".litertlm")}.tflite"
+                    // Map slot .task/.litertlm filename to the raw .tflite model file.
+                    // CHAT/REASONING use qwen05_clean.task but the raw flatbuffer is qwen05.tflite.
+                    val tfliteName = when (slot.fileName) {
+                        "qwen05_clean.task" -> "qwen05.tflite"
+                        "qwen05.task" -> "qwen05.tflite"
+                        else -> slot.fileName.removeSuffix(".task").removeSuffix(".litertlm") + ".tflite"
+                    }
+                    val tflitePath = "/data/local/tmp/cipher_models/$tfliteName"
                     val tfliteFile = java.io.File(tflitePath)
                     if (tfliteFile.exists()) {
                         Log.i(TAG, "LLM slot ${slot.name}: trying NeuronBridge NPU with $tflitePath")
