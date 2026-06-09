@@ -203,14 +203,17 @@ class LiteRTEngine(
         if (files.isEmpty()) { Log.w(TAG, "No model files in $modelDir"); return }
         for (src in files) {
             val dst = File(dstDir, src.name)
-            if (!dst.exists() || dst.length() != src.length()) {
-                Log.i(TAG, "Copying model: ${src.name} (${src.length() / 1024 / 1024}MB)")
-                try {
-                    src.copyTo(dst, overwrite = true)
-                    Log.i(TAG, "Copy complete: ${src.name}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to copy ${src.name}", e)
-                }
+            // Skip if already copied with correct size
+            if (dst.exists() && dst.length() == src.length()) {
+                Log.d(TAG, "Model already present, skipping: ${src.name} (${dst.length() / 1024 / 1024}MB) at ${dst.absolutePath}")
+                continue
+            }
+            Log.i(TAG, "Copying model: ${src.name} (${src.length() / 1024 / 1024}MB) from ${src.absolutePath} to ${dst.absolutePath}")
+            try {
+                src.copyTo(dst, overwrite = true)
+                Log.i(TAG, "Copy complete: ${src.name} → ${dst.absolutePath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy ${src.name}", e)
             }
         }
         Log.i(TAG, "All models copied to filesDir")
@@ -240,20 +243,33 @@ class LiteRTEngine(
 
     private fun modelFile(slot: ModelSlot): File {
         val filesDirPath = File(context.filesDir, slot.fileName).absolutePath
-        if (File(filesDirPath).exists()) return File(filesDirPath)
-        return File(modelDir, slot.fileName)
+        val filesDirFile = File(filesDirPath)
+        if (filesDirFile.exists()) {
+            Log.d(TAG, "modelFile(${slot.name}): using filesDir path=${filesDirFile.absolutePath} size=${filesDirFile.length() / 1024 / 1024}MB")
+            return filesDirFile
+        }
+        val srcFile = File(modelDir, slot.fileName)
+        Log.d(TAG, "modelFile(${slot.name}): using source path=${srcFile.absolutePath} exists=${srcFile.exists()} size=${if (srcFile.exists()) srcFile.length() / 1024 / 1024 else 0}MB")
+        return srcFile
     }
 
-    private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 30_000L) {
+    private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 120_000L) {
         val flagFile = File(context.filesDir, ".models_copied")
         // Quick check — if flag exists, models are ready
         if (flagFile.exists()) return
+
+        // If the model file already exists at the source path, no need to wait
+        val srcFile = File(modelDir, slot.fileName)
+        if (srcFile.exists()) {
+            Log.d(TAG, "Model available at source path: ${srcFile.absolutePath}")
+        }
 
         // Wait for flag file to appear (models still copying)
         val start = System.currentTimeMillis()
         while (!flagFile.exists()) {
             if (System.currentTimeMillis() - start > timeoutMs) {
-                Log.w(TAG, "Timeout waiting for model copy after ${timeoutMs}ms, using source dir")
+                Log.w(TAG, "Timeout waiting for model copy after ${timeoutMs}ms, using source dir. " +
+                    "Model source=${srcFile.absolutePath} exists=${srcFile.exists()} size=${srcFile.length() / 1024 / 1024}MB")
                 return
             }
             kotlinx.coroutines.delay(500)

@@ -42,8 +42,8 @@ class TfliteLlmEngine(private val context: Context) {
                 java.io.FileInputStream(modelFile).use { it.read(header) }
                 val hex = header.joinToString(" ") { "%02X".format(it) }
                 val ascii = String(header, Charsets.US_ASCII).filter { it.isLetterOrDigit() || it == '_' }
-                Log.d(TAG, "File header [$ascii]: $hex")
-                Log.d(TAG, "Loading model: $modelPath (${modelFile.length() / 1_048_576} MB)")
+                Log.i(TAG, "File header [$ascii]: $hex")
+                Log.i(TAG, "Loading model: $modelPath (${modelFile.length() / 1_048_576} MB)")
 
                 val options = LlmInferenceOptions.builder()
                     .setModelPath(modelPath)
@@ -53,13 +53,26 @@ class TfliteLlmEngine(private val context: Context) {
                     .setRandomSeed(RANDOM_SEED)
                     .build()
 
-                llmEngine = LlmInference.createFromOptions(context, options)
+                Log.i(TAG, "Calling LlmInference.createFromOptions() with modelPath=$modelPath")
+                val engine = try {
+                    LlmInference.createFromOptions(context, options)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "createFromOptions THREW: ${e.javaClass.name}: ${e.message}", e)
+                    return@withContext false
+                }
+
+                if (engine == null) {
+                    Log.e(TAG, "createFromOptions returned null — model load failed silently")
+                    return@withContext false
+                }
+
+                llmEngine = engine
                 isReady = true
-                Log.d(TAG, "LiteRT LLM engine ready ✓")
+                Log.i(TAG, "LiteRT LLM engine ready ✓ modelPath=$modelPath")
                 true
 
-            } catch (e: Exception) {
-                Log.e(TAG, "Engine init failed: ${e.message}", e)
+            } catch (e: Throwable) {
+                Log.e(TAG, "Engine init failed with Throwable: ${e.javaClass.name}: ${e.message}", e)
                 isReady = false
                 false
             }

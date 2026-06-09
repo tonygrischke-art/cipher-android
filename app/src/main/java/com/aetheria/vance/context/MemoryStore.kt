@@ -207,8 +207,14 @@ class MemoryStore(context: Context) {
 
     fun saveExchange(sessionId: String, userMessage: String, cipherResponse: String, actionType: String? = null) {
         val now = System.currentTimeMillis()
-        conversations.insert(ConversationEntity(role = "user", content = userMessage, timestamp = now, sessionId = sessionId))
-        conversations.insert(ConversationEntity(role = "cipher", content = cipherResponse, timestamp = now + 1, sessionId = sessionId, actionType = actionType))
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            try {
+                conversations.insert(ConversationEntity(role = "user", content = userMessage, timestamp = now, sessionId = sessionId))
+                conversations.insert(ConversationEntity(role = "cipher", content = cipherResponse, timestamp = now + 1, sessionId = sessionId, actionType = actionType))
+            } catch (e: Exception) {
+                android.util.Log.e("MemoryStore", "saveExchange failed", e)
+            }
+        }
     }
 
     fun getSessionHistory(sessionId: String) = conversations.getBySession(sessionId)
