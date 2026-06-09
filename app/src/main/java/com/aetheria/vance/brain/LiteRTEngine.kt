@@ -132,8 +132,8 @@ class LiteRTEngine(
 
     enum class ModelSlot(val fileName: String, val isLlm: Boolean = false) {
         ACTION("mobile_actions_q8_ekv1024.litertlm"),       // 276MB .litertlm — device actions
-        REASONING("qwen05.task", isLlm = true),             // 521MB .task — reasoning via TfliteLlmEngine (LlmInference)
-        CHAT("qwen05.task", isLlm = true),                  // 521MB .task — conversation via TfliteLlmEngine (LlmInference)
+        REASONING("qwen05_clean.task", isLlm = true),       // 521MB clean .task — reasoning via TfliteLlmEngine (LlmInference)
+        CHAT("qwen05_clean.task", isLlm = true),            // 521MB clean .task — conversation via TfliteLlmEngine (LlmInference)
         TEST("mobilenet_test.tflite")                       // 3.4MB raw TFLite — TfliteEngine NPU smoke test only
     }
 
