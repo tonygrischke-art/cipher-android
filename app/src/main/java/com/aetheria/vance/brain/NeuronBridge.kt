@@ -20,10 +20,10 @@ object NeuronBridge {
         Log.i(TAG, "libneuron_bridge.so loaded — NeuronAdapter ready")
         true
     } catch (e: UnsatisfiedLinkError) {
-        Log.w(TAG, "libneuron_bridge.so not in APK — NPU disabled")
+        Log.w(TAG, "libneuron_bridge.so not in APK — NPU disabled: ${e.message}")
         false
     } catch (e: Throwable) {
-        Log.e(TAG, "Unexpected error loading neuron_bridge: ${e.message}")
+        Log.e(TAG, "Unexpected error loading neuron_bridge: ${e.message}", e)
         false
     }
 
