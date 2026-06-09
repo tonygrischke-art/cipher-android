@@ -128,8 +128,8 @@ dependencies {
     implementation("com.google.mediapipe:tasks-core:0.10.14")
 
     // TensorFlow Lite — NNAPI delegate for MediaTek MT6878 NPU
-    implementation("org.tensorflow:tensorflow-lite:2.15.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.15.0")
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
     implementation("org.tensorflow:tensorflow-lite-task-text:0.4.4")
 
