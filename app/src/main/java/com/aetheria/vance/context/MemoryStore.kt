@@ -3,6 +3,8 @@ package com.aetheria.vance.context
 import android.content.Context
 import androidx.room.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ── Entities ─────────────────────────────────────────────────────
