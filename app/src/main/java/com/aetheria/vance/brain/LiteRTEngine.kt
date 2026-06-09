@@ -320,9 +320,22 @@ class LiteRTEngine(
             // Wait for model copy to complete (up to 30s)
             waitForModel(slot)
 
-            // ── LLM slots (REASONING, CHAT): TfliteLlmEngine via MediaPipe LlmInference ──
-            // Loads .litertlm directly from /data/local/tmp/cipher_models/ — no copy needed
+            // ── LLM slots (REASONING, CHAT): Try NeuronBridge NPU first, then MediaPipe ──
             if (slot.isLlm) {
+                // Tier 1: NeuronBridge NPU with raw .tflite (bypasses MediaPipe crash)
+                if (NeuronBridge.isAvailable) {
+                    val tflitePath = "/data/local/tmp/cipher_models/${slot.fileName.removeSuffix(".task").removeSuffix(".litertlm")}.tflite"
+                    val tfliteFile = java.io.File(tflitePath)
+                    if (tfliteFile.exists()) {
+                        Log.i(TAG, "LLM slot ${slot.name}: trying NeuronBridge NPU with $tflitePath")
+                        val npuResult = tryNeuronBridge(prompt, slot, tfliteFile, startTime)
+                        if (npuResult != null) return@withContext npuResult
+                        Log.w(TAG, "NeuronBridge NPU failed for ${slot.name}, trying MediaPipe")
+                    } else {
+                        Log.w(TAG, "No raw .tflite for ${slot.name} at $tflitePath")
+                    }
+                }
+                // Tier 2: MediaPipe LlmInference with .task/.litertlm
                 val result = tryTfliteLlm(prompt, slot, startTime)
                 if (result != null) return@withContext result
                 Log.w(TAG, "TfliteLlmEngine failed for ${slot.name}, falling through to Groq")
