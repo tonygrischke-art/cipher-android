@@ -222,6 +222,11 @@ class ContextEngine(private val context: Context) {
     // ── Calendar ────────────────────────────────────────────────────
 
     private fun getNextCalendarEvent(): String? {
+        // Guard: skip calendar query if permission not granted (avoids SecurityException spam)
+        if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CALENDAR)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return null
+        }
         return try {
             val now = System.currentTimeMillis()
             val projection = arrayOf(
