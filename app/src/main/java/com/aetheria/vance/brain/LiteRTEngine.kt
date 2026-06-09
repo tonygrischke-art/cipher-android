@@ -131,9 +131,9 @@ class LiteRTEngine(
     }
 
     enum class ModelSlot(val fileName: String, val isLlm: Boolean = false) {
-        ACTION("mobile_actions_q8_ekv1024.litertlm"),       // 276MB MediaPipe bundle — device actions (classification)
-        REASONING("qwen05.tflite", isLlm = true),           // 544MB raw TFLite — LLM via TfliteLlmEngine (NNAPI)
-        CHAT("qwen05.tflite", isLlm = true),                // 544MB raw TFLite — LLM via TfliteLlmEngine (NNAPI)
+        ACTION("mobile_actions_q8_ekv1024.litertlm"),       // 276MB .litertlm — device actions
+        REASONING("qwen05.task", isLlm = true),             // 521MB .task — reasoning via TfliteLlmEngine (LlmInference)
+        CHAT("qwen05.task", isLlm = true),                  // 521MB .task — conversation via TfliteLlmEngine (LlmInference)
         TEST("mobilenet_test.tflite")                       // 3.4MB raw TFLite — TfliteEngine NPU smoke test only
     }
 
@@ -381,9 +381,11 @@ class LiteRTEngine(
     private suspend fun tryTfliteLlm(prompt: String, slot: ModelSlot, startTime: Long): InferenceResult? {
         if (!tfliteLlmInitAttempted) {
             tfliteLlmInitAttempted = true
-            Log.i(TAG, "TfliteLlmEngine: initializing (useActionModel=${slot == ModelSlot.ACTION})")
+            // Load .task/.litertlm directly from /data/local/tmp/cipher_models/
+            val modelPath = "${TfliteLlmEngine.MODEL_BASE_PATH}/${slot.fileName}"
+            Log.i(TAG, "TfliteLlmEngine: initializing with $modelPath")
             tfliteLlmEngine = TfliteLlmEngine(context).also { engine ->
-                val ok = engine.initialize(useActionModel = (slot == ModelSlot.ACTION))
+                val ok = engine.initialize(modelPath)
                 if (!ok) {
                     Log.e(TAG, "TfliteLlmEngine: init failed")
                     tfliteLlmEngine = null
