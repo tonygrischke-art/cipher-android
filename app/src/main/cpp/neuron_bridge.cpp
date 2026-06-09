@@ -46,11 +46,8 @@ static TfLiteStatus (*pfn_TfLiteInterpreterInvoke)(TfLiteInterpreter*) = nullptr
 static TfLiteType (*pfn_TfLiteTensorType)(const TfLiteTensor*) = nullptr;
 static size_t (*pfn_TfLiteTensorByteSize)(const TfLiteTensor*) = nullptr;
 static void* (*pfn_TfLiteTensorData)(const TfLiteTensor*) = nullptr;
-static TfLiteNnApiDelegateParams* (*pfn_TfLiteNnApiDelegateParamsCreate)(void) = nullptr;
-static void (*pfn_TfLiteNnApiDelegateParamsDelete)(TfLiteNnApiDelegateParams*) = nullptr;
-static void (*pfn_TfLiteNnApiDelegateParamsSetSupportLibraryHandle)(TfLiteNnApiDelegateParams*, void*) = nullptr;
-static TfLiteDelegate* (*pfn_TfLiteNnApiDelegateCreate)(const TfLiteNnApiDelegateParams*) = nullptr;
-static void (*pfn_TfLiteNnApiDelegateDelete)(TfLiteDelegate*) = nullptr;
+static TfLiteDelegate* (*pfn_TfLiteNnapiDelegateCreate)(const void*) = nullptr;
+static void (*pfn_TfLiteNnapiDelegateDelete)(TfLiteDelegate*) = nullptr;
 
 // ── NNAPI adapter function pointers ──────────────────────────────────────
 struct NnApiShims {
@@ -132,11 +129,8 @@ static bool loadTFLite() {
     ok &= R("TfLiteTensorType", pfn_TfLiteTensorType);
     ok &= R("TfLiteTensorByteSize", pfn_TfLiteTensorByteSize);
     ok &= R("TfLiteTensorData", pfn_TfLiteTensorData);
-    ok &= R("TfLiteNnApiDelegateParamsCreate", pfn_TfLiteNnApiDelegateParamsCreate);
-    ok &= R("TfLiteNnApiDelegateParamsDelete", pfn_TfLiteNnApiDelegateParamsDelete);
-    ok &= R("TfLiteNnApiDelegateParamsSetSupportLibraryHandle", pfn_TfLiteNnApiDelegateParamsSetSupportLibraryHandle);
-    ok &= R("TfLiteNnApiDelegateCreate", pfn_TfLiteNnApiDelegateCreate);
-    ok &= R("TfLiteNnApiDelegateDelete", pfn_TfLiteNnApiDelegateDelete);
+    ok &= R("TfLiteNnapiDelegateCreate", pfn_TfLiteNnapiDelegateCreate);
+    ok &= R("TfLiteNnapiDelegateDelete", pfn_TfLiteNnapiDelegateDelete);
 
     if (ok) LOGI("[APU] All TFLite C API symbols resolved ✓");
     return ok;
@@ -297,7 +291,7 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     }
     LOGI("[APU] Adapter symbols resolved ✓");
 
-    // 4. Populate SL shim
+    // 4. Populate SL shim (for potential future C++ API use)
     populateNnApiSL();
 
     // 5. Load model
@@ -305,24 +299,22 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     if (!s->model) { LOGE("[APU] Model load failed: %s", model_path.c_str()); dlclose(s->adapter_handle); delete s; return 0L; }
     LOGI("[APU] Model loaded: %s ✓", model_path.c_str());
 
-    // 6. Create options + inject SL shim
+    // 6. Create options + attach NNAPI delegate
     s->interp_opts = pfn_TfLiteInterpreterOptionsCreate();
     if (!s->interp_opts) { LOGE("[APU] OptionsCreate failed"); pfn_TfLiteModelDelete(s->model); dlclose(s->adapter_handle); delete s; return 0L; }
 
-    TfLiteNnApiDelegateParams* dp = pfn_TfLiteNnApiDelegateParamsCreate();
-    if (dp) {
-        pfn_TfLiteNnApiDelegateParamsSetSupportLibraryHandle(dp, &g_nnapi_sl);
-        LOGI("[APU] SL shim injected into delegate params ✓");
-        TfLiteDelegate* del = pfn_TfLiteNnApiDelegateCreate(dp);
+    // Use C API: create NNAPI delegate with default options, then add to interpreter options.
+    // The C API doesn't support SL handle injection — the delegate uses system NNAPI.
+    if (pfn_TfLiteNnapiDelegateCreate) {
+        TfLiteDelegate* del = pfn_TfLiteNnapiDelegateCreate(nullptr);
         if (del) {
             pfn_TfLiteInterpreterOptionsAddDelegate(s->interp_opts, del);
             LOGI("[APU] NnApiDelegate created and added ✓");
         } else {
-            LOGE("[APU] NnApiDelegateCreate failed — CPU fallback");
+            LOGE("[APU] NnApiDelegateCreate returned null — CPU fallback");
         }
-        pfn_TfLiteNnApiDelegateParamsDelete(dp);
     } else {
-        LOGE("[APU] DelegateParamsCreate failed — CPU fallback");
+        LOGE("[APU] NnApiDelegateCreate symbol not resolved — CPU fallback");
     }
 
     // 7. Create interpreter
