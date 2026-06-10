@@ -253,28 +253,35 @@ class LiteRTEngine(
         return srcFile
     }
 
-    private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 120_000L) {
-        val flagFile = File(context.filesDir, ".models_copied")
-        // Quick check — if flag exists, models are ready
-        if (flagFile.exists()) return
-
-        // If the model file already exists at the source path, no need to wait
+    private suspend fun waitForModel(slot: ModelSlot, timeoutMs: Long = 30_000L) {
+        // Fast path: check if model already exists in filesDir or source dir
+        val filesDirFile = File(context.filesDir, slot.fileName)
+        if (filesDirFile.exists() && filesDirFile.length() > 0) {
+            Log.d(TAG, "waitForModel(${slot.name}): model ready in filesDir")
+            return
+        }
         val srcFile = File(modelDir, slot.fileName)
-        if (srcFile.exists()) {
-            Log.d(TAG, "Model available at source path: ${srcFile.absolutePath}")
+        if (srcFile.exists() && srcFile.length() > 0) {
+            Log.d(TAG, "waitForModel(${slot.name}): model available at source path, waiting for copy")
         }
 
         // Wait for flag file to appear (models still copying)
+        val flagFile = File(context.filesDir, ".models_copied")
         val start = System.currentTimeMillis()
         while (!flagFile.exists()) {
+            // Also check if model appeared in filesDir even without flag
+            if (filesDirFile.exists() && filesDirFile.length() > 0) {
+                Log.d(TAG, "waitForModel(${slot.name}): model appeared in filesDir (no flag)")
+                return
+            }
             if (System.currentTimeMillis() - start > timeoutMs) {
-                Log.w(TAG, "Timeout waiting for model copy after ${timeoutMs}ms, using source dir. " +
-                    "Model source=${srcFile.absolutePath} exists=${srcFile.exists()} size=${srcFile.length() / 1024 / 1024}MB")
+                Log.w(TAG, "waitForModel(${slot.name}): timeout after ${timeoutMs}ms. " +
+                    "filesDir=${filesDirFile.exists()} src=${srcFile.exists()} srcSize=${srcFile.length() / 1024 / 1024}MB")
                 return
             }
             kotlinx.coroutines.delay(500)
         }
-        Log.i(TAG, "Model copy flag detected, models ready")
+        Log.i(TAG, "waitForModel(${slot.name}): copy flag detected, models ready")
     }
 
     fun isModelAvailable(slot: ModelSlot): Boolean = modelFile(slot).exists()
