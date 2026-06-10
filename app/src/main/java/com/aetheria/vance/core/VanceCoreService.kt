@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.brain.BrainRouter
+import com.aetheria.vance.brain.SkillLearner
 import com.aetheria.vance.brain.SkillMatcher
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
@@ -54,8 +55,10 @@ class VanceCoreService : Service() {
     @Inject lateinit var voicePipeline: VoicePipeline
     @Inject lateinit var actionExecutor: ActionExecutor
     @Inject lateinit var memoryStore: MemoryStore
+    @Inject lateinit var npuEngine: NpuEngine
 
     private lateinit var skillMatcher: SkillMatcher
+    private lateinit var skillLearner: SkillLearner
 
     private lateinit var powerManager: PowerManager
     private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
@@ -77,6 +80,7 @@ class VanceCoreService : Service() {
 
         // Seed skills on first launch
         skillMatcher = SkillMatcher(memoryStore)
+        skillLearner = SkillLearner(memoryStore)
         serviceScope.launch {
             skillMatcher.seedIfNeeded()
         }
@@ -148,23 +152,26 @@ class VanceCoreService : Service() {
     private fun initializeSubsystems() {
         Log.d(TAG, "Initializing subsystems")
         voicePipeline.initialize()
-        // WakeWordService is started by OnboardingActivity's LaunchedEffect.
-        // Don't start it again here to avoid duplicate service instances.
 
-        // Check Groq API key — warn if cloud fallback is disabled
-        try {
-            val prefs = getSharedPreferences("cipher_secure_prefs", Context.MODE_PRIVATE)
-            val groqKey = prefs.getString("groq_api_key", "") ?: ""
-            if (groqKey.isBlank()) {
-                Log.w(TAG, "Groq API key not set — cloud fallback disabled. Set key in Settings.")
-            } else {
-                Log.d(TAG, "Groq API key is set — cloud fallback available")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not check Groq key: ${e.message}")
+    // Initialize NPU engine with model in files dir
+    val modelFile = java.io.File(filesDir, NpuEngine.MODEL_FILENAME)
+    if (modelFile.exists()) {
+        serviceScope.launch(Dispatchers.IO) {
+            npuEngine.init(modelFile.absolutePath)
         }
+        Log.d(TAG, "NPU engine init scheduled with model: ${modelFile.absolutePath}")
+    } else {
+        Log.w(TAG, "NPU model not found at: ${modelFile.absolutePath}")
+    }
 
-        // Start FloatingOrbService if overlay permission is granted
+    // Initialize MemoryEmbedder (ML Kit)
+    serviceScope.launch(Dispatchers.IO) {
+        com.aetheria.vance.brain.MemoryEmbedder.initialize(this@VanceCoreService)
+        // Backfill embeddings for existing conversations
+        memoryStore.backfillEmbeddings()
+    }
+
+    // Start FloatingOrbService if overlay permission is granted
         if (Settings.canDrawOverlays(this)) {
             val orbIntent = Intent(this, FloatingOrbService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -175,6 +182,19 @@ class VanceCoreService : Service() {
             Log.d(TAG, "FloatingOrbService started")
         } else {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW not granted — FloatingOrbService not started")
+            // Fix 4: Launch overlay permission settings
+            try {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:$packageName")
+                ).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+                Log.i(TAG, "Launched overlay permission settings")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch overlay permission settings: ${e.message}")
+            }
         }
     }
 
@@ -218,7 +238,6 @@ class VanceCoreService : Service() {
             val text = intent?.getStringExtra("text") ?: ""
             val packageName = intent?.getStringExtra("package_name") ?: ""
             Log.d(TAG, "Notification received: [$packageName] $title: $text")
-            // Update context engine
             if (title.isNotBlank() || text.isNotBlank()) {
                 contextEngine.lastNotification = "$title: $text".take(100)
             }
@@ -238,10 +257,7 @@ class VanceCoreService : Service() {
     private fun handleWakeWord(intent: Intent) {
         val wakeWord = intent.getStringExtra("wake_word") ?: "unknown"
         Log.d(TAG, "Wake word detected: $wakeWord")
-
-        // Upgrade FGS to include microphone type now that we actually need the mic
         enableMicrophoneFgs()
-
         voicePipeline.startListening(
             onTranscript = { transcript ->
                 handleTranscript(transcript)
@@ -267,7 +283,7 @@ class VanceCoreService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // ── Transcript deduplication ──────────────────────────────────────
+    // ── Transcript deduplication (Fix 0A) ──────────────────────────────
     private var lastTranscript: String? = null
     private var lastTranscriptTime: Long = 0L
     private val DEDUP_WINDOW_MS = 500L
@@ -293,7 +309,6 @@ class VanceCoreService : Service() {
 
         serviceScope.launch {
             try {
-                // Get context snapshot
                 val contextSnapshot = try {
                     contextEngine.getSnapshot()
                 } catch (e: Exception) {
@@ -304,7 +319,6 @@ class VanceCoreService : Service() {
                     contextEngine.formatForPrompt(it)
                 } ?: contextEngine.getCurrentContext()
 
-                // Load conversation history for context
                 val recentHistory = try {
                     memoryStore.getRecentConversations(5)
                         .joinToString("\n") { "${it.role}: ${it.content}" }
@@ -315,7 +329,6 @@ class VanceCoreService : Service() {
 
                 val result = brainRouter.route(transcript, contextStr, recentHistory, contextSnapshot)
 
-                // Execute action if present
                 val responseText = if (result.actionJson != null) {
                     val actionResult = try {
                         actionExecutor.execute(result.actionJson)
@@ -339,6 +352,9 @@ class VanceCoreService : Service() {
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to save to memory", e)
                 }
+
+                // Observe for skill learning
+                skillLearner.observe(transcript, responseText, true)
 
                 voicePipeline.speak(responseText)
 
@@ -386,7 +402,6 @@ class VanceCoreService : Service() {
         }
     }
 
-    /** Call when actually starting mic capture (wake word detected / user prompt). */
     fun enableMicrophoneFgs() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(withMicrophone = true)

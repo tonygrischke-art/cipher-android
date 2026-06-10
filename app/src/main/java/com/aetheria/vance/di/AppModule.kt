@@ -5,10 +5,7 @@ import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.actions.IntentHandler
 import com.aetheria.vance.actions.SmsHandler
 import com.aetheria.vance.actions.SystemSettingHandler
-import com.aetheria.vance.brain.BrainRouter
-import com.aetheria.vance.brain.GroqClient
-import com.aetheria.vance.brain.LiteRTEngine
-import com.aetheria.vance.brain.NpuBridge
+import com.aetheria.vance.brain.*
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.context.RoutineEngine
@@ -33,28 +30,50 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideNpuBridge(): NpuBridge {
-        return NpuBridge()
+    fun provideFastLlmClient(): FastLlmClient {
+        return FastLlmClient()
     }
 
     @Provides
     @Singleton
-    fun provideLiteRTEngine(
-        @ApplicationContext context: Context,
-        npuBridge: NpuBridge
-    ): LiteRTEngine {
-        // initialize() is safe — never crashes. Returns false if NPU unavailable.
-        val npuReady = npuBridge.initialize()
-        return LiteRTEngine(
-            context = context,
-            npuBridge = if (npuReady) npuBridge else null
-        )
+    fun provideMainLlmClient(): MainLlmClient {
+        return MainLlmClient()
     }
 
     @Provides
     @Singleton
-    fun provideGroqClient(@ApplicationContext context: Context): GroqClient {
-        return GroqClient(context = context)
+    fun provideNpuEngine(@ApplicationContext context: Context): NpuEngine {
+        return NpuEngine(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTfliteLlmEngine(@ApplicationContext context: Context): TfliteLlmEngine {
+        return TfliteLlmEngine(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryStore(@ApplicationContext context: Context): MemoryStore {
+        return MemoryStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryRetriever(memoryStore: MemoryStore): MemoryRetriever {
+        return MemoryRetriever(memoryStore.embeddings)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSkillMatcher(memoryStore: MemoryStore): SkillMatcher {
+        return SkillMatcher(memoryStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSkillLearner(memoryStore: MemoryStore): SkillLearner {
+        return SkillLearner(memoryStore)
     }
 
     @Provides
@@ -101,12 +120,6 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideMemoryStore(@ApplicationContext context: Context): MemoryStore {
-        return MemoryStore(context)
-    }
-
-    @Provides
-    @Singleton
     fun provideRoutineEngine(
         @ApplicationContext context: Context,
         memoryStore: MemoryStore,
@@ -119,11 +132,23 @@ object AppModule {
     @Provides
     @Singleton
     fun provideBrainRouter(
-        liteRTEngine: LiteRTEngine,
-        groqClient: GroqClient,
+        fastLlmClient: FastLlmClient,
+        mainLlmClient: MainLlmClient,
+        npuEngine: NpuEngine,
+        skillMatcher: SkillMatcher,
+        memoryRetriever: MemoryRetriever,
+        tfliteLlmEngine: TfliteLlmEngine,
         actionExecutor: ActionExecutor
     ): BrainRouter {
-        return BrainRouter(liteRTEngine, groqClient, actionExecutor)
+        return BrainRouter(
+            fastLlmClient = fastLlmClient,
+            mainLlmClient = mainLlmClient,
+            npuEngine = npuEngine,
+            skillMatcher = skillMatcher,
+            memoryRetriever = memoryRetriever,
+            tfliteLlmEngine = tfliteLlmEngine,
+            actionExecutor = actionExecutor
+        )
     }
 
     @Provides

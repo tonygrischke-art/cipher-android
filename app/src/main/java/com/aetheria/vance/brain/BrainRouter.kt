@@ -4,29 +4,31 @@ import android.util.Log
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.context.ContextEngine
 import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONObject
 
 /**
- * Routes user transcripts to the appropriate brain (on-device or cloud),
- * classifies intent, formats prompts, parses responses, and returns structured results.
+ * Routes user transcripts to the appropriate inference engine.
+ * Local-only. No cloud. No Groq.
  *
- * Routing:
- *   DEVICE_ACTION → LiteRT ACTION_MODEL (mobile_actions) → Groq llama-3.3-70b fallback
- *   CONVERSATION  → LiteRT CHAT_MODEL (qwen05) → REASONING_MODEL (gemma-3n) → Groq fallback
- *   REASONING     → LiteRT REASONING_MODEL (gemma-3n) → Groq llama-3.3-70b fallback
+ * Routing chain:
+ *   1. SkillMatcher       → instant (<50ms), no model needed
+ *   2. FastLlmClient      → localhost:8080, Qwen2.5-0.5B (simple queries)
+ *   3. NpuEngine          → LiteRT 2.x Accelerator.NPU (primary for complex)
+ *   4. MainLlmClient      → localhost:8081, Qwen2.5-1.5B CPU fallback
+ *   5. TfliteLlmEngine    → existing MediaPipe path, last resort
  *
- * Returns [BrainResult] with optional action JSON and spoken response text.
+ * If ALL fail → "Offline. Start local servers in Termux to enable responses."
  */
 class BrainRouter(
-    private val liteRTEngine: LiteRTEngine,
-    private val groqClient: GroqClient,
-    private val actionExecutor: ActionExecutor,
-    private val skillMatcher: SkillMatcher
+    private val fastLlmClient: FastLlmClient,
+    private val mainLlmClient: MainLlmClient,
+    private val npuEngine: NpuEngine,
+    private val skillMatcher: SkillMatcher,
+    private val memoryRetriever: MemoryRetriever?,
+    private val tfliteLlmEngine: TfliteLlmEngine?,
+    private val actionExecutor: ActionExecutor
 ) {
     companion object {
         private const val TAG = "BrainRouter"
-        private const val GROQ_MODEL = "llama-3.3-70b-versatile"
-        private const val GROQ_TIMEOUT_MS = 15_000L
 
         val VANCE_SYSTEM_PROMPT = "You are Vance — a private, on-device AI built exclusively for Tony. " +
             "You run entirely on his phone. No cloud. No surveillance. No filters. " +
@@ -55,25 +57,11 @@ class BrainRouter(
 
         const val CIPHER_SYSTEM_PROMPT = VANCE_SYSTEM_PROMPT
 
-        val DEVICE_ACTION_KEYWORDS = listOf(
-            "turn on", "turn off", "toggle",
-            "open", "close", "launch", "start", "kill",
-            "call", "text", "message", "dial", "send", "reply",
-            "set", "change", "adjust",
-            "volume", "brightness", "wifi", "wi-fi", "bluetooth",
-            "airplane", "flashlight", "torch",
-            "alarm", "timer", "screenshot",
-            "enable", "disable", "switch"
+        private val SIMPLE_KEYWORDS = listOf(
+            "battery", "time", "wifi", "wi-fi", "memory", "ram",
+            "storage", "weather", "date", "connected", "screen",
+            "charging", "percent", "level", "network", "internet"
         )
-
-        val REASONING_KEYWORDS = listOf(
-            "summarize", "explain", "what is", "what's", "how do", "how does",
-            "analyze", "compare", "difference", "debug", "fix", "check",
-            "read", "tell me", "what's happening", "why", "calculate",
-            "review", "describe", "define", "translate"
-        )
-
-        enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION }
     }
 
     data class BrainResult(
@@ -81,8 +69,26 @@ class BrainRouter(
         val spokenResponse: String
     )
 
-    suspend fun route(transcript: String, context: String, history: String = "", skillContext: com.aetheria.vance.context.ContextEngine.ContextSnapshot? = null): BrainResult {
+    private var chainLogged = false
+
+    private fun logChainStatus() {
+        if (chainLogged) return
+        chainLogged = true
+        val fastOk = fastLlmClient.isServerRunning()
+        val mainOk = mainLlmClient.isServerRunning()
+        Log.i(TAG, "BrainRouter: Fast=$fastOk (localhost:8080)")
+        Log.i(TAG, "BrainRouter: NPU=${npuEngine.isInitialised}")
+        Log.i(TAG, "BrainRouter: Main=$mainOk (localhost:8081)")
+    }
+
+    suspend fun route(
+        transcript: String,
+        context: String,
+        history: String = "",
+        skillContext: ContextEngine.ContextSnapshot? = null
+    ): BrainResult {
         Log.d(TAG, "Routing: \"$transcript\"")
+        logChainStatus()
 
         // Tier 0: SkillMatcher — instant, no inference needed
         val matchedSkill = skillMatcher.match(transcript)
@@ -97,197 +103,85 @@ class BrainRouter(
             return BrainResult(spokenResponse = response)
         }
 
-        val intent = classifyIntent(transcript)
-        Log.d(TAG, "Intent classified as: $intent")
+        // Determine if query is simple
+        val isSimple = isSimpleQuery(transcript)
+        Log.d(TAG, "Query type: ${if (isSimple) "SIMPLE" else "COMPLEX"}")
 
-        return when (intent) {
-            Intent.DEVICE_ACTION -> handleDeviceAction(transcript, context)
-            Intent.REASONING -> handleReasoning(transcript, context, history)
-            Intent.CONVERSATION -> handleConversation(transcript, context, history)
+        // Build prompt with system prompt + RAG memories
+        val fullPrompt = buildFullPrompt(transcript, context, history)
+
+        // Tier 1: Fast path for simple queries
+        if (isSimple) {
+            val fastResult = fastLlmClient.complete(fullPrompt)
+            if (fastResult != null) {
+                Log.i(TAG, "FastLlm responded for simple query")
+                return BrainResult(spokenResponse = fastResult)
+            }
+            Log.w(TAG, "FastLlm unavailable for simple query, falling through")
         }
-    }
 
-    fun classifyIntent(transcript: String): Intent {
-        val lower = transcript.lowercase().trim()
-        if (DEVICE_ACTION_KEYWORDS.any { lower.contains(it) }) return Intent.DEVICE_ACTION
-        if (REASONING_KEYWORDS.any { lower.contains(it) }) return Intent.REASONING
-        return Intent.CONVERSATION
-    }
+        // Tier 2: NPU engine (primary for complex queries)
+        if (npuEngine.isInitialised) {
+            val npuResult = npuEngine.generate(fullPrompt)
+            if (npuResult != null) {
+                Log.i(TAG, "NPU responded")
+                return BrainResult(spokenResponse = npuResult)
+            }
+            Log.w(TAG, "NPU returned null, falling through")
+        }
 
-    private suspend fun handleDeviceAction(transcript: String, context: String): BrainResult {
-        val prompt = buildActionPrompt(transcript, context)
+        // Tier 3: MainLlmClient — CPU fallback
+        val mainResult = mainLlmClient.complete(fullPrompt)
+        if (mainResult != null) {
+            Log.i(TAG, "MainLlm responded")
+            return BrainResult(spokenResponse = mainResult)
+        }
+        Log.w(TAG, "MainLlm unavailable")
 
-        // Tier 1: On-device action model
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.ACTION)) {
+        // Tier 4: TfliteLlmEngine — last resort
+        if (tfliteLlmEngine != null && tfliteLlmEngine.isReady()) {
             try {
-                val raw = withTimeoutOrNull(10_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.ACTION)
+                val tfliteResult = withTimeoutOrNull(45_000L) {
+                    tfliteLlmEngine.generate(fullPrompt)
                 }
-                if (raw != null) {
-                    val text = raw.text
-                    val json = extractActionJson(text)
-                    val spoken = extractSpokenResponse(text)
-                    return BrainResult(actionJson = json, spokenResponse = spoken)
+                if (tfliteResult != null) {
+                    Log.i(TAG, "TfliteLlmEngine responded")
+                    return BrainResult(spokenResponse = tfliteResult)
                 }
-                Log.w(TAG, "Action model timed out, falling back to Groq")
-            } catch (e: LiteRTEngine.ModelNotFoundException) {
-                Log.w(TAG, "Action model not found: ${e.slot}")
             } catch (e: Exception) {
-                Log.w(TAG, "Action model failed: ${e.message}")
+                Log.w(TAG, "TfliteLlmEngine failed: ${e.message}")
             }
         }
 
-        // Tier 2: Groq fallback
-        val groqResponse = try {
-            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Groq fallback failed", e)
-            null
-        }
-
-        if (groqResponse != null) {
-            val json = extractActionJson(groqResponse)
-            val spoken = extractSpokenResponse(groqResponse)
-            return BrainResult(actionJson = json, spokenResponse = spoken)
-        }
-
-        return BrainResult(spokenResponse = "Sorry, I couldn't process that right now.")
-    }
-
-    private suspend fun handleReasoning(transcript: String, context: String, history: String): BrainResult {
-        val prompt = buildReasoningPrompt(transcript, context, history)
-
-        // Tier 1 : On-device reasoning model
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
-            try {
-                val raw = withTimeoutOrNull(45_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
-                }
-                if (raw != null) {
-                    return BrainResult(spokenResponse = raw.text.trim())
-                }
-                Log.w(TAG, "Reasoning model timed out, falling back to Groq")
-            } catch (e: LiteRTEngine.ModelNotFoundException) {
-                Log.w(TAG, "Reasoning model not found: ${e.slot}")
-            } catch (e: Exception) {
-                Log.w(TAG, "Reasoning model failed: ${e.message}")
-            }
-        }
-
-        // Tier 2: Groq fallback
-        val groqResponse = try {
-            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Groq fallback failed", e)
-            null
-        }
-
+        // All engines failed
+        Log.e(TAG, "All inference engines unavailable")
         return BrainResult(
-            spokenResponse = groqResponse?.trim() ?: "Sorry, I'm having trouble thinking right now."
+            spokenResponse = "Offline. Start local servers in Termux to enable responses."
         )
     }
 
-    private suspend fun handleConversation(transcript: String, context: String, history: String): BrainResult {
-        val prompt = buildConversationPrompt(transcript, context, history)
+    private fun isSimpleQuery(query: String): Boolean {
+        val q = query.lowercase()
+        return SIMPLE_KEYWORDS.any { q.contains(it) }
+    }
 
-        // Tier 1: On-device CHAT model (qwen05.task via MediaPipe)
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.CHAT)) {
-            try {
-                val raw = withTimeoutOrNull(45_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.CHAT)
-                }
-                if (raw != null) {
-                    return BrainResult(spokenResponse = raw.text.trim())
-                }
-                Log.w(TAG, "CHAT model timed out, trying REASONING model")
-            } catch (e: Exception) {
-                Log.w(TAG, "CHAT model failed: ${e.message}")
+    private suspend fun buildFullPrompt(
+        query: String, context: String, history: String
+    ): String {
+        val memoryContext = memoryRetriever?.retrieve(query, topK = 3)
+        return buildString {
+            append(VANCE_SYSTEM_PROMPT)
+            append("\n\nContext: $context")
+            if (history.isNotBlank()) {
+                append("\n\nRecent conversation:\n$history")
             }
-        }
-
-        // Tier 2: On-device REASONING model (gemma-3n fallback)
-        if (liteRTEngine.isModelAvailable(LiteRTEngine.ModelSlot.REASONING)) {
-            try {
-                val raw = withTimeoutOrNull(45_000L) {
-                    liteRTEngine.generate(prompt, LiteRTEngine.ModelSlot.REASONING)
+            if (!memoryContext.isNullOrEmpty()) {
+                append("\n\nRelevant memories:")
+                for (mem in memoryContext) {
+                    append("\n$mem")
                 }
-                if (raw != null) {
-                    return BrainResult(spokenResponse = raw.text.trim())
-                }
-                Log.w(TAG, "REASONING model timed out, falling back to Groq")
-            } catch (e: Exception) {
-                Log.w(TAG, "REASONING model failed: ${e.message}")
             }
+            append("\n\nUser: $query")
         }
-
-        // Tier 3: Groq fallback
-        val groqResponse = try {
-            withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Groq fallback failed", e)
-            null
-        }
-
-        return BrainResult(
-            spokenResponse = groqResponse?.trim() ?: "Tell me more."
-        )
-    }
-
-    // ── Prompt formatters ──────────────────────────────────────────
-
-    private fun buildActionPrompt(transcript: String, context: String): String =
-        "You are a phone control AI. User says: $transcript. " +
-            "Context: $context. " +
-            "Respond with JSON: {action_type, parameters, spoken_response}"
-
-    private fun buildReasoningPrompt(transcript: String, context: String, history: String): String {
-        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "$VANCE_SYSTEM_PROMPT\n\nContext: $context$historyBlock\n\nUser: $transcript"
-    }
-
-    private fun buildConversationPrompt(transcript: String, context: String, history: String): String {
-        val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "$VANCE_SYSTEM_PROMPT\n\nContext: $context$historyBlock\n\nUser: $transcript"
-    }
-
-    // ── Response parsing ───────────────────────────────────────────
-
-    /**
-     * Extract a JSON action block from raw model output.
-     * Looks for { ... } containing "action_type".
-     */
-    private fun extractActionJson(raw: String): String? {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start == -1 || end == -1 || end <= start) return null
-        val block = raw.substring(start, end + 1)
-        return try {
-            val json = JSONObject(block)
-            if (json.has("action_type") || json.has("type")) block else null
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    /**
-     * Extract spoken_response from JSON, or return the full text.
-     */
-    private fun extractSpokenResponse(raw: String): String {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start != -1 && end != -1 && end > start) {
-            try {
-                val json = JSONObject(raw.substring(start, end + 1))
-                val spoken = json.optString("spoken_response", "")
-                if (spoken.isNotBlank()) return spoken
-            } catch (_: Exception) {}
-        }
-        return raw.trim()
     }
 }

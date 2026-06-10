@@ -6,16 +6,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * NPU inference engine using LiteRT 2.x CompiledModel API.
+ * NPU inference engine using LiteRT 2.x CompiledModel API with LiteRT-LM.
  * Falls back to GPU, then CPU if NPU unavailable.
+ * Uses LiteRT-LM's Kotlin API for text-in/text-out generation.
  */
 class NpuEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "NpuEngine"
+        // Target model & tokenizer paths in app files dir
+        const val MODEL_FILENAME = "qwen15_abliterated_int4.tflite"
+        const val TOKENIZER_FILENAME = "qwen15_abliterated_tokenizer.model"
     }
 
-    private var compiledModel: Any? = null // CompiledModel — loaded reflectively to avoid compile-time dependency
+    private var llmInference: Any? = null
     private var modelPath: String = ""
     var isInitialised = false
         private set
@@ -24,30 +28,42 @@ class NpuEngine(private val context: Context) {
         this.modelPath = modelPath
         Log.i(TAG, "Init from: $modelPath")
 
-        // Try NPU first, then GPU, then CPU
         val accelerators = listOf("NPU", "GPU", "CPU")
         for (accel in accelerators) {
             try {
-                // Use reflective access to LiteRT 2.x CompiledModel
-                // This avoids compile-time dependency on litert:2.1.0
-                //which may not be in the current build
-                val optionsClass = try {
-                    Class.forName("com.google.ai.edge.litert.CompiledModel\$Options")
-                } catch (e: ClassNotFoundException) {
-                    Log.w(TAG, "CompiledModel.Options not found — LiteRT 2.x not in classpath")
-                    return
-                }
-                val createMethod = try {
-                    Class.forName("com.google.ai.edge.litert.CompiledModel")
-                        .getMethod("create", String::class.java, optionsClass)
-                } catch (e: NoSuchMethodException) {
-                    Log.w(TAG, "CompiledModel.create not found")
-                    return
-                }
+                // Try LiteRT-LM LlmInference API first (MediaPipe GenAI compatible)
+                val llmInferenceClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference")
+                val optionsClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference$LlmInferenceOptions")
+                val builderClass = Class.forName("com.google.mediapipe.tasks.genai.llminference.LlmInference$LlmInferenceOptions$Builder")
+
+                val builder = builderClass.getDeclaredConstructor().newInstance()
+                builderClass.getMethod("setModelPath", String::class.java).invoke(builder, modelPath)
+                builderClass.getMethod("setMaxTokens", Int::class.java).invoke(builder, 512)
+                builderClass.getMethod("setTopK", Int::class.java).invoke(builder, 40)
+                builderClass.getMethod("setTemperature", Float::class.java).invoke(builder, 0.8f)
+                builderClass.getMethod("setRandomSeed", Long::class.java).invoke(builder, 42L)
+
+                val options = builderClass.getMethod("build").invoke(builder)
+                llmInference = llmInferenceClass.getMethod("createFromOptions", Context::class.java, optionsClass).invoke(null, context, options)
+
+                isInitialised = true
+                Log.i(TAG, "LiteRT-LM LlmInference SUCCESS with model: $modelPath")
+                return
+            } catch (e: ClassNotFoundException) {
+                Log.w(TAG, "LiteRT-LM not available, trying CompiledModel API")
+            } catch (e: Exception) {
+                Log.w(TAG, "LiteRT-LM failed: ${e.javaClass.simpleName}: ${e.message}")
+            }
+
+            // Fallback: LiteRT 2.x CompiledModel API
+            try {
+                val optionsClass = Class.forName("com.google.ai.edge.litert.CompiledModel\$Options")
+                val createMethod = Class.forName("com.google.ai.edge.litert.CompiledModel")
+                    .getMethod("create", String::class.java, optionsClass)
                 val optionsInstance = optionsClass
                     .getConstructor(String::class.java)
                     .newInstance(accel)
-                compiledModel = createMethod.invoke(null, modelPath, optionsInstance)
+                llmInference = createMethod.invoke(null, modelPath, optionsInstance)
                 isInitialised = true
                 Log.i(TAG, "CompiledModel SUCCESS with accelerator=$accel")
                 return
@@ -55,27 +71,35 @@ class NpuEngine(private val context: Context) {
                 Log.w(TAG, "$accel failed: ${e.javaClass.simpleName}: ${e.message}")
             }
         }
-        Log.e(TAG, "All accelerators failed for: $modelPath")
+        Log.e(TAG, "All inference APIs failed for: $modelPath")
         isInitialised = false
     }
 
     suspend fun generate(prompt: String): String? {
-        if (!isInitialised || compiledModel == null) return null
+        if (!isInitialised || llmInference == null) return null
         return withContext(Dispatchers.Default) {
             try {
-                // Reflective invoke: compiledModel.run(inputBuffers, outputBuffers)
-                val runMethod = compiledModel!!.javaClass.getMethod("run", Any::class.java, Any::class.java)
-                val createInputBuffers = compiledModel!!.javaClass.getMethod("createInputBuffers")
-                val createOutputBuffers = compiledModel!!.javaClass.getMethod("createOutputBuffers")
-                val inputBuffers = createInputBuffers.invoke(compiledModel)
-                val outputBuffers = createOutputBuffers.invoke(compiledModel)
-                runMethod.invoke(compiledModel, inputBuffers, outputBuffers)
-                Log.i(TAG, "Inference complete")
-                // TODO: Extract actual text output from outputBuffers
-                // For now, return null to indicate LiteRT bridge needs full implementation
-                null
+                // Try LiteRT-LM generateResponse first
+                val response = try {
+                    llmInference!!.javaClass.getMethod("generateResponse", String::class.java)
+                        .invoke(llmInference, prompt) as String
+                } catch (e: NoSuchMethodException) {
+                    // Fallback: CompiledModel run with buffers
+                    Log.w(TAG, "generateResponse not found, trying buffer API")
+                    val runMethod = llmInference!!.javaClass.getMethod("run", Any::class.java, Any::class.java)
+                    val createInputBuffers = llmInference!!.javaClass.getMethod("createInputBuffers")
+                    val createOutputBuffers = llmInference!!.javaClass.getMethod("createOutputBuffers")
+                    val inputBuffers = createInputBuffers.invoke(llmInference)
+                    val outputBuffers = createOutputBuffers.invoke(llmInference)
+                    runMethod.invoke(llmInference, inputBuffers, outputBuffers)
+                    // Try to extract text from output buffers
+                    val getStringMethod = outputBuffers.javaClass.getMethod("getString")
+                    getStringMethod.invoke(outputBuffers) as String
+                }
+                Log.i(TAG, "Inference complete (${response.length} chars)")
+                response
             } catch (e: Exception) {
-                Log.e(TAG, "generate() failed: ${e.message}")
+                Log.e(TAG, "generate() failed: ${e.message}", e)
                 null
             }
         }
@@ -83,9 +107,9 @@ class NpuEngine(private val context: Context) {
 
     fun close() {
         try {
-            compiledModel?.javaClass?.getMethod("close")?.invoke(compiledModel)
+            llmInference?.javaClass?.getMethod("close")?.invoke(llmInference)
         } catch (_: Exception) {}
-        compiledModel = null
+        llmInference = null
         isInitialised = false
     }
 }

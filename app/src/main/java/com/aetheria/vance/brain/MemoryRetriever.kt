@@ -30,7 +30,7 @@ class MemoryRetriever(private val embeddingDao: MemoryEmbeddingDao) {
             .filter { it.first > 0.1f } // minimum similarity threshold
             .map { "[Memory] ${it.second}" }
             .also {
-                Log.d(TAG, "Injecting ${it.size} memories for: ${query.take(50)}")
+                Log.i(TAG, "RAG: injecting ${it.size} memories for: ${query.take(50)}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Retrieval failed: ${e.message}")

@@ -13,15 +13,15 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Bridges Vance to a llama-server instance at http://127.0.0.1:8080.
- * Local fallback when NPU inference is unavailable.
+ * Main LLM client — bridges to llama-server at http://127.0.0.1:8081 (Qwen2.5-1.5B).
+ * Full conversation, commands, reasoning. CPU fallback when NPU unavailable.
  */
-class LocalLlmClient(
-    private val baseUrl: String = "http://127.0.0.1:8080",
+class MainLlmClient(
+    private val baseUrl: String = "http://127.0.0.1:8081",
     private val systemPrompt: String = BrainRouter.VANCE_SYSTEM_PROMPT
 ) {
     companion object {
-        private const val TAG = "LocalLlm"
+        private const val TAG = "MainLlm"
         private const val TIMEOUT_S = 60L
     }
 

@@ -38,9 +38,12 @@ class ContextEngine(private val context: Context) {
     data class ContextSnapshot(
         val timestamp: Long = System.currentTimeMillis(),
         val timeFormatted: String = "",
+        val currentTime: String = "",
+        val currentDate: String = "",
         val batteryLevel: Int = -1,
         val isCharging: Boolean = false,
         val networkType: String = "unknown",
+        val wifiName: String? = null,
         val foregroundApp: String = "unknown",
         val screenBrightness: Int = -1,
         val volume: Int = -1,
@@ -48,7 +51,9 @@ class ContextEngine(private val context: Context) {
         val lastNotification: String? = null,
         val locationCity: String? = null,
         val isDrivingMode: Boolean = false,
-        val thermalState: String = "Unknown"
+        val thermalState: String = "Unknown",
+        val availableMemory: String = "unknown",
+        val screenContent: String? = null
     )
 
     private var cachedSnapshot: ContextSnapshot? = null
@@ -72,6 +77,16 @@ class ContextEngine(private val context: Context) {
                     sdf.format(Date())
                 } ?: ""
 
+                val currentTime = withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) {
+                    val sdf = SimpleDateFormat("h:mm a", Locale.US)
+                    sdf.format(Date())
+                } ?: ""
+
+                val currentDate = withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) {
+                    val sdf = SimpleDateFormat("EEEE, MMMM d", Locale.US)
+                    sdf.format(Date())
+                } ?: ""
+
                 val batteryDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getBatteryLevel() } ?: -1 }
                 val chargingDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { isCharging() } ?: false }
                 val networkDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getNetworkType() } ?: "unknown" }
@@ -80,6 +95,14 @@ class ContextEngine(private val context: Context) {
                 val calendarDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getNextCalendarEvent() } }
                 val locationDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getLocationCity() } }
                 val thermalDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getThermalState() } }
+                val memoryDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getAvailableMemory() } }
+                val screenDeferred = async { withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) { getScreenContent() } }
+
+                val networkType = networkDeferred.await()
+                val wifiName = when {
+                    networkType.startsWith("WiFi: ") -> networkType.substringAfter("WiFi: ")
+                    else -> null
+                }
 
                 val foregroundApp = try {
                     val pm = context.packageManager
@@ -90,9 +113,12 @@ class ContextEngine(private val context: Context) {
                 val snapshot = ContextSnapshot(
                     timestamp = now,
                     timeFormatted = timeFormatted,
+                    currentTime = currentTime,
+                    currentDate = currentDate,
                     batteryLevel = batteryDeferred.await(),
                     isCharging = chargingDeferred.await(),
-                    networkType = networkDeferred.await(),
+                    networkType = networkType,
+                    wifiName = wifiName,
                     foregroundApp = foregroundApp,
                     screenBrightness = brightnessDeferred.await(),
                     volume = volumeDeferred.await(),
@@ -100,7 +126,9 @@ class ContextEngine(private val context: Context) {
                     lastNotification = lastNotification,
                     locationCity = locationDeferred.await(),
                     isDrivingMode = false,
-                    thermalState = thermalDeferred.await() ?: "Unknown"
+                    thermalState = thermalDeferred.await() ?: "Unknown",
+                    availableMemory = memoryDeferred.await() ?: "unknown",
+                    screenContent = screenDeferred.await()
                 )
 
                 cachedSnapshot = snapshot
@@ -309,5 +337,27 @@ class ContextEngine(private val context: Context) {
                 }
             } catch (e: Exception) { null }
         } else null
+    }
+
+    // ── Memory ──────────────────────────────────────────────────────
+
+    private fun getAvailableMemory(): String {
+        return try {
+            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val memInfo = android.app.ActivityManager.MemoryInfo()
+            activityManager.getMemoryInfo(memInfo)
+            val availMB = memInfo.availMem / (1024 * 1024)
+            "${availMB} MB"
+        } catch (e: Exception) { "unknown" }
+    }
+
+    // ── Screen Content (Accessibility) ──────────────────────────────
+
+    private fun getScreenContent(): String? {
+        return try {
+            // This would require AccessibilityService to read screen content
+            // For now return null - will be populated via VanceAccessibilityService
+            null
+        } catch (e: Exception) { null }
     }
 }

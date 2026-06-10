@@ -7,20 +7,19 @@ plugins {
 
 android {
     namespace = "com.aetheria.vance"
-    compileSdk = 36  // Android 16 (API 36) — correct for target device
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.aetheria.vance"
         minSdk = 26
-        targetSdk = 36  // Android 16 (API 36) — correct for target device
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // NPU: Specify ABIs for MediaTek
         ndk {
-            abiFilters.add("arm64-v8a")  // MT6878 is arm64
+            abiFilters.add("arm64-v8a")
         }
 
         externalNativeBuild {
@@ -37,7 +36,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true  // FIXED: Enable for release
+            isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -64,10 +63,9 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"  // Match Kotlin 1.9.0 (1.5.8 requires 1.9.22)
+        kotlinCompilerExtensionVersion = "1.5.1"
     }
 
-    // NPU: External native build
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -82,7 +80,6 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         jniLibs {
-            // NPU: Keep native libraries uncompressed for reliable loading on MTK
             useLegacyPackaging = true
         }
     }
@@ -124,8 +121,14 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
+    // MediaPipe GenAI
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
     implementation("com.google.mediapipe:tasks-core:0.10.14")
+
+    // LiteRT 2.x — CompiledModel API with NPU support
+    implementation("com.google.ai.edge.litert:litert:2.1.0")
+    implementation("com.google.ai.edge.litert:litert-gpu:2.1.0")
+    implementation("com.google.ai.edge.litert:litert-lm:2.1.0")
 
     // TensorFlow Lite — NNAPI delegate for MediaTek MT6878 NPU
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
@@ -137,20 +140,19 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 
-    // Networking (Groq fallback)
+    // Networking (local llama.cpp bridge only — no cloud)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // REMOVED: kotlinx-serialization-json (unused — code uses org.json)
 
     // Location
     implementation("com.google.android.gms:play-services-location:21.1.0")
 
-    // Security — stable version
-    implementation("androidx.security:security-crypto:1.0.0")  // FIXED: Was alpha
+    // Security
+    implementation("androidx.security:security-crypto:1.0.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // WorkManager — for BootReceiver deferred service start
+    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Testing

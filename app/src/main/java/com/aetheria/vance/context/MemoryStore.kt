@@ -62,109 +62,109 @@ data class ContactMemoryEntity(
 @Dao
 interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE sessionId = :sessionId ORDER BY timestamp ASC")
-    fun getBySession(sessionId: String): List<ConversationEntity>
+    suspend fun getBySession(sessionId: String): List<ConversationEntity>
 
     @Query("SELECT * FROM conversations ORDER BY timestamp DESC LIMIT :limit")
-    fun getRecent(limit: Int = 100): List<ConversationEntity>
+    suspend fun getRecent(limit: Int = 100): List<ConversationEntity>
 
     @Insert
-    fun insert(conversation: ConversationEntity): Long
+    suspend fun insert(conversation: ConversationEntity): Long
 
     @Insert
-    fun insertAll(vararg conversations: ConversationEntity)
+    suspend fun insertAll(vararg conversations: ConversationEntity)
 
     @Query("DELETE FROM conversations WHERE timestamp < :timestamp")
-    fun deleteOlderThan(timestamp: Long): Int
+    suspend fun deleteOlderThan(timestamp: Long): Int
 
     @Query("DELETE FROM conversations WHERE sessionId = :sessionId")
-    fun clearSession(sessionId: String)
+    suspend fun clearSession(sessionId: String)
 
     @Query("SELECT COUNT(*) FROM conversations")
-    fun getCount(): Int
+    suspend fun getCount(): Int
 }
 
 @Dao
 interface PreferenceDao {
     @Query("SELECT * FROM preferences WHERE `key` = :key")
-    fun getByKey(key: String): PreferenceEntity?
+    suspend fun getByKey(key: String): PreferenceEntity?
 
     @Query("SELECT value FROM preferences WHERE `key` = :key")
-    fun getValue(key: String): String?
+    suspend fun getValue(key: String): String?
 
     @Query("SELECT * FROM preferences")
-    fun getAll(): List<PreferenceEntity>
+    suspend fun getAll(): List<PreferenceEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsert(preference: PreferenceEntity)
+    suspend fun upsert(preference: PreferenceEntity)
 
     @Query("DELETE FROM preferences WHERE `key` = :key")
-    fun deleteByKey(key: String)
+    suspend fun deleteByKey(key: String)
 }
 
 @Dao
 interface RoutineDao {
     @Query("SELECT * FROM routines WHERE enabled = 1")
-    fun getEnabled(): List<RoutineEntity>
+    suspend fun getEnabled(): List<RoutineEntity>
 
     @Query("SELECT * FROM routines WHERE triggerType = :type AND enabled = 1")
-    fun getByTriggerType(type: String): List<RoutineEntity>
+    suspend fun getByTriggerType(type: String): List<RoutineEntity>
 
     @Query("SELECT * FROM routines WHERE triggerType = :type AND triggerValue = :value AND enabled = 1")
-    fun getByTrigger(type: String, value: String): List<RoutineEntity>
+    suspend fun getByTrigger(type: String, value: String): List<RoutineEntity>
 
     @Insert
-    fun insert(routine: RoutineEntity): Long
+    suspend fun insert(routine: RoutineEntity): Long
 
     @Insert
-    fun insertAll(vararg routines: RoutineEntity)
+    suspend fun insertAll(vararg routines: RoutineEntity)
 
     @Update
-    fun update(routine: RoutineEntity)
+    suspend fun update(routine: RoutineEntity)
 
     @Query("UPDATE routines SET lastRun = :timestamp WHERE id = :id")
-    fun updateLastRun(id: Long, timestamp: Long)
+    suspend fun updateLastRun(id: Long, timestamp: Long)
 
     @Query("DELETE FROM routines WHERE id = :id")
-    fun deleteById(id: Long)
+    suspend fun deleteById(id: Long)
 }
 
 @Dao
 interface LocationMemoryDao {
     @Query("SELECT * FROM location_memory ORDER BY lastVisit DESC LIMIT :limit")
-    fun getRecent(limit: Int = 20): List<LocationMemoryEntity>
+    suspend fun getRecent(limit: Int = 20): List<LocationMemoryEntity>
 
     @Query("SELECT * FROM location_memory WHERE label LIKE :query ORDER BY lastVisit DESC")
-    fun searchByLabel(query: String): List<LocationMemoryEntity>
+    suspend fun searchByLabel(query: String): List<LocationMemoryEntity>
 
     @Insert
-    fun insert(location: LocationMemoryEntity): Long
+    suspend fun insert(location: LocationMemoryEntity): Long
 
     @Query("SELECT * FROM location_memory WHERE lat BETWEEN :minLat AND :maxLat AND lng BETWEEN :minLng AND :maxLng ORDER BY lastVisit DESC")
-    fun getNearby(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double): List<LocationMemoryEntity>
+    suspend fun getNearby(minLat: Double, maxLat: Double, minLng: Double, maxLng: Double): List<LocationMemoryEntity>
 
     @Query("DELETE FROM location_memory WHERE id = :id")
-    fun deleteById(id: Long)
+    suspend fun deleteById(id: Long)
 }
 
 @Dao
 interface ContactMemoryDao {
     @Query("SELECT * FROM contact_memory WHERE contactId = :contactId")
-    fun getByContactId(contactId: String): ContactMemoryEntity?
+    suspend fun getByContactId(contactId: String): ContactMemoryEntity?
 
     @Query("SELECT * FROM contact_memory ORDER BY lastContacted DESC LIMIT :limit")
-    fun getRecent(limit: Int = 20): List<ContactMemoryEntity>
+    suspend fun getRecent(limit: Int = 20): List<ContactMemoryEntity>
 
     @Query("SELECT * FROM contact_memory WHERE lastContacted < :timestamp ORDER BY lastContacted ASC")
-    fun getNotContactedSince(timestamp: Long): List<ContactMemoryEntity>
+    suspend fun getNotContactedSince(timestamp: Long): List<ContactMemoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsert(contact: ContactMemoryEntity)
+    suspend fun upsert(contact: ContactMemoryEntity)
 
     @Query("UPDATE contact_memory SET contactCount = contactCount + 1, lastContacted = :timestamp WHERE contactId = :contactId")
-    fun incrementContactCount(contactId: String, timestamp: Long = System.currentTimeMillis())
+    suspend fun incrementContactCount(contactId: String, timestamp: Long = System.currentTimeMillis())
 
     @Query("DELETE FROM contact_memory WHERE contactId = :contactId")
-    fun deleteByContactId(contactId: String)
+    suspend fun deleteByContactId(contactId: String)
 }
 
 // ── Skills ─────────────────────────────────────────────────────────
@@ -186,19 +186,19 @@ data class SkillEntity(
 @Dao
 interface SkillDao {
     @Query("SELECT * FROM skills")
-    fun getAllSkills(): List<SkillEntity>
+    suspend fun getAllSkills(): List<SkillEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertAll(vararg skills: SkillEntity)
+    suspend fun insertAll(vararg skills: SkillEntity)
 
     @Query("SELECT * FROM skills WHERE approved = 1")
-    fun getApprovedSkills(): List<SkillEntity>
+    suspend fun getApprovedSkills(): List<SkillEntity>
 
     @Query("UPDATE skills SET useCount = useCount + 1, lastUsed = :now WHERE id = :id")
-    fun incrementUseCount(id: String, now: Long = System.currentTimeMillis())
+    suspend fun incrementUseCount(id: String, now: Long = System.currentTimeMillis())
 
     @Query("DELETE FROM skills WHERE id = :id")
-    fun deleteById(id: String)
+    suspend fun deleteById(id: String)
 }
 
 // ── Memory Embeddings (RAG) ───────────────────────────────────────
@@ -267,12 +267,12 @@ class MemoryStore(context: Context) {
     val locations get() = db.locationMemoryDao()
     val contacts get() = db.contactMemoryDao()
 
-    // ── Conversation helpers ───────────────────────────────────────
+    // ── Conversation helpers (Fix 2: all DAO calls on IO dispatcher) ──
 
-    fun saveExchange(sessionId: String, userMessage: String, cipherResponse: String, actionType: String? = null) {
-        val now = System.currentTimeMillis()
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+    suspend fun saveExchange(sessionId: String, userMessage: String, cipherResponse: String, actionType: String? = null) {
+        withContext(Dispatchers.IO) {
             try {
+                val now = System.currentTimeMillis()
                 val savedId = conversations.insert(ConversationEntity(role = "user", content = userMessage, timestamp = now, sessionId = sessionId))
                 conversations.insert(ConversationEntity(role = "cipher", content = cipherResponse, timestamp = now + 1, sessionId = sessionId, actionType = actionType))
 
@@ -291,45 +291,56 @@ class MemoryStore(context: Context) {
                         )
                     )
                 } catch (e: Exception) {
-                    android.util.Log.w("MemoryStore", "Embedding failed silently: ${e.message}")
+                    Log.w("MemoryStore", "Embedding failed silently: ${e.message}")
                 }
             } catch (e: Exception) {
-                android.util.Log.e("MemoryStore", "saveExchange failed", e)
+                Log.e("MemoryStore", "saveExchange failed", e)
             }
         }
     }
 
-    fun getSessionHistory(sessionId: String) = conversations.getBySession(sessionId)
+    suspend fun getSessionHistory(sessionId: String): List<ConversationEntity> = withContext(Dispatchers.IO) {
+        conversations.getBySession(sessionId)
+    }
 
-    fun getRecentExchanges(limit: Int = 20) = conversations.getRecent(limit)
+    suspend fun getRecentConversations(limit: Int): List<ConversationEntity> = withContext(Dispatchers.IO) {
+        conversations.getRecent(limit)
+    }
 
-    suspend fun getRecentConversations(limit: Int): List<ConversationEntity> =
-        withContext(Dispatchers.IO) {
-            conversations.getRecent(limit)
-        }
+    suspend fun clearHistory(sessionId: String) = withContext(Dispatchers.IO) {
+        conversations.clearSession(sessionId)
+    }
 
-    fun clearHistory(sessionId: String) = conversations.clearSession(sessionId)
-
-    fun pruneOldConversations(olderThan: Long) = conversations.deleteOlderThan(olderThan)
+    suspend fun pruneOldConversations(olderThan: Long) = withContext(Dispatchers.IO) {
+        conversations.deleteOlderThan(olderThan)
+    }
 
     // ── Preference helpers ─────────────────────────────────────────
 
-    fun getPreference(key: String): String? = preferences.getValue(key)
+    suspend fun getPreference(key: String): String? = withContext(Dispatchers.IO) {
+        preferences.getValue(key)
+    }
 
-    fun setPreference(key: String, value: String) {
+    suspend fun setPreference(key: String, value: String) = withContext(Dispatchers.IO) {
         preferences.upsert(PreferenceEntity(key = key, value = value))
     }
 
-    fun getAllPreferences() = preferences.getAll()
+    suspend fun getAllPreferences(): List<PreferenceEntity> = withContext(Dispatchers.IO) {
+        preferences.getAll()
+    }
 
     // ── Routine helpers ────────────────────────────────────────────
 
-    fun getEnabledRoutines() = routines.getEnabled()
+    suspend fun getEnabledRoutines(): List<RoutineEntity> = withContext(Dispatchers.IO) {
+        routines.getEnabled()
+    }
 
-    fun getRoutinesByTrigger(type: String) = routines.getByTriggerType(type)
+    suspend fun getRoutinesByTrigger(type: String): List<RoutineEntity> = withContext(Dispatchers.IO) {
+        routines.getByTriggerType(type)
+    }
 
-    fun addRoutine(triggerType: String, triggerValue: String, actionJson: String, label: String): Long {
-        return routines.insert(RoutineEntity(
+    suspend fun addRoutine(triggerType: String, triggerValue: String, actionJson: String, label: String): Long = withContext(Dispatchers.IO) {
+        routines.insert(RoutineEntity(
             triggerType = triggerType,
             triggerValue = triggerValue,
             actionJson = actionJson,
@@ -337,45 +348,59 @@ class MemoryStore(context: Context) {
         ))
     }
 
-    fun markRoutineRun(routineId: Long) = routines.updateLastRun(routineId, System.currentTimeMillis())
+    suspend fun markRoutineRun(routineId: Long) = withContext(Dispatchers.IO) {
+        routines.updateLastRun(routineId, System.currentTimeMillis())
+    }
 
-    fun deleteRoutine(routineId: Long) = routines.deleteById(routineId)
+    suspend fun deleteRoutine(routineId: Long) = withContext(Dispatchers.IO) {
+        routines.deleteById(routineId)
+    }
 
     // ── Location helpers ───────────────────────────────────────────
 
-    fun rememberLocation(lat: Double, lng: Double, label: String, notes: String? = null): Long {
-        return locations.insert(LocationMemoryEntity(lat = lat, lng = lng, label = label, notes = notes))
+    suspend fun rememberLocation(lat: Double, lng: Double, label: String, notes: String? = null): Long = withContext(Dispatchers.IO) {
+        locations.insert(LocationMemoryEntity(lat = lat, lng = lng, label = label, notes = notes))
     }
 
-    fun getRecentLocations(limit: Int = 10) = locations.getRecent(limit)
+    suspend fun getRecentLocations(limit: Int = 10): List<LocationMemoryEntity> = withContext(Dispatchers.IO) {
+        locations.getRecent(limit)
+    }
 
-    fun searchLocations(query: String) = locations.searchByLabel("%$query%")
+    suspend fun searchLocations(query: String): List<LocationMemoryEntity> = withContext(Dispatchers.IO) {
+        locations.searchByLabel("%$query%")
+    }
 
     // ── Contact helpers ────────────────────────────────────────────
 
-    fun rememberContact(contactId: String, name: String, notes: String? = null) {
+    suspend fun rememberContact(contactId: String, name: String, notes: String? = null) = withContext(Dispatchers.IO) {
         contacts.upsert(ContactMemoryEntity(contactId = contactId, name = name, relationshipNotes = notes))
     }
 
-    fun recordContact(contactId: String) = contacts.incrementContactCount(contactId)
+    suspend fun recordContact(contactId: String) = withContext(Dispatchers.IO) {
+        contacts.incrementContactCount(contactId)
+    }
 
-    fun getContact(contactId: String) = contacts.getByContactId(contactId)
+    suspend fun getContact(contactId: String): ContactMemoryEntity? = withContext(Dispatchers.IO) {
+        contacts.getByContactId(contactId)
+    }
 
-    fun getForgottenContacts(daysAgo: Long): List<ContactMemoryEntity> {
+    suspend fun getForgottenContacts(daysAgo: Long): List<ContactMemoryEntity> = withContext(Dispatchers.IO) {
         val cutoff = System.currentTimeMillis() - (daysAgo * 86400000L)
-        return contacts.getNotContactedSince(cutoff)
+        contacts.getNotContactedSince(cutoff)
     }
 
     // ── Skill helpers ───────────────────────────────────────────────
 
-    fun getAllSkills(): List<SkillEntity>? = try {
-        db.skillDao().getAllSkills()
-    } catch (e: Exception) {
-        Log.e("MemoryStore", "getAllSkills failed", e)
-        null
+    suspend fun getAllSkills(): List<SkillEntity>? = withContext(Dispatchers.IO) {
+        try {
+            db.skillDao().getAllSkills()
+        } catch (e: Exception) {
+            Log.e("MemoryStore", "getAllSkills failed", e)
+            null
+        }
     }
 
-    fun insertSkills(skills: List<SkillEntity>) {
+    suspend fun insertSkills(skills: List<SkillEntity>) = withContext(Dispatchers.IO) {
         try {
             db.skillDao().insertAll(*skills.toTypedArray())
         } catch (e: Exception) {
@@ -386,4 +411,45 @@ class MemoryStore(context: Context) {
     // ── Memory Embedding helpers (RAG) ──────────────────────────────
 
     val embeddings get() = db.embeddingDao()
+
+    // ── RAG backfill (Section 5) ─────────────────────────────────────
+
+    suspend fun backfillEmbeddings() = withContext(Dispatchers.IO) {
+        try {
+            val count = embeddings.getCount()
+            if (count > 0) {
+                Log.d("MemoryStore", "Embeddings already populated ($count), skipping backfill")
+                return@withContext
+            }
+            val allConversations = conversations.getRecent(100)
+            val pairs = allConversations.filter { it.role == "user" }.mapNotNull { userMsg ->
+                val cipherMsg = allConversations.find {
+                    it.role == "cipher" && it.timestamp > userMsg.timestamp && it.sessionId == userMsg.sessionId
+                }
+                if (cipherMsg != null) Pair(userMsg, cipherMsg) else null
+            }
+            Log.i("MemoryStore", "Backfilling ${pairs.size} conversation pairs")
+            for ((userMsg, cipherMsg) in pairs) {
+                try {
+                    val text = "User: ${userMsg.content} → Vance: ${cipherMsg.content}"
+                    val embedding = com.aetheria.vance.brain.MemoryEmbedder.embed(text)
+                    val blob = com.aetheria.vance.brain.floatsToBytes(embedding)
+                    embeddings.insertEmbedding(
+                        MemoryEmbeddingEntity(
+                            id = java.util.UUID.randomUUID().toString(),
+                            conversationId = userMsg.id,
+                            embeddingBlob = blob,
+                            inputText = text,
+                            timestamp = userMsg.timestamp
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.w("MemoryStore", "Backfill embedding failed for pair: ${e.message}")
+                }
+            }
+            Log.i("MemoryStore", "Backfill complete: ${embeddings.getCount()} embeddings")
+        } catch (e: Exception) {
+            Log.e("MemoryStore", "Backfill failed", e)
+        }
+    }
 }
