@@ -53,8 +53,8 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideGroqClient(): GroqClient {
-        return GroqClient()
+    fun provideGroqClient(@ApplicationContext context: Context): GroqClient {
+        return GroqClient(context = context)
     }
 
     @Provides

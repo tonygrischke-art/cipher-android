@@ -19,6 +19,7 @@ import androidx.core.app.NotificationCompat
 import com.aetheria.vance.R
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.brain.BrainRouter
+import com.aetheria.vance.brain.SkillMatcher
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.notifications.VanceNotificationListener
@@ -54,6 +55,8 @@ class VanceCoreService : Service() {
     @Inject lateinit var actionExecutor: ActionExecutor
     @Inject lateinit var memoryStore: MemoryStore
 
+    private lateinit var skillMatcher: SkillMatcher
+
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private lateinit var powerManager: PowerManager
@@ -73,6 +76,12 @@ class VanceCoreService : Service() {
         initializeSubsystems()
         registerNotificationReceiver()
         registerAppChangeReceiver()
+
+        // Seed skills on first launch
+        skillMatcher = SkillMatcher(memoryStore)
+        serviceScope.launch {
+            skillMatcher.seedIfNeeded()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -258,7 +267,23 @@ class VanceCoreService : Service() {
         contextEngine.foregroundAppPackage = packageName
     }
 
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // ── Transcript deduplication ──────────────────────────────────────
+    private var lastTranscript: String? = null
+    private var lastTranscriptTime: Long = 0L
+    private val DEDUP_WINDOW_MS = 500L
+
     private fun handleTranscript(transcript: String) {
+        val now = System.currentTimeMillis()
+        // Deduplicate: drop identical transcript within window
+        if (transcript == lastTranscript && (now - lastTranscriptTime) < DEDUP_WINDOW_MS) {
+            Log.d(TAG, "Duplicate transcript dropped: \"$transcript\"")
+            return
+        }
+        lastTranscript = transcript
+        lastTranscriptTime = now
+
         if (isThermallyThrottled) {
             Log.w(TAG, "Thermally throttled — deferring: \"$transcript\"")
             deferredTranscripts.offer(transcript)
@@ -290,7 +315,7 @@ class VanceCoreService : Service() {
                     ""
                 }
 
-                val result = brainRouter.route(transcript, contextStr, recentHistory)
+                val result = brainRouter.route(transcript, contextStr, recentHistory, contextSnapshot)
 
                 // Execute action if present
                 val responseText = if (result.actionJson != null) {

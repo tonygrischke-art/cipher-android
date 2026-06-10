@@ -2,6 +2,7 @@ package com.aetheria.vance.brain
 
 import android.util.Log
 import com.aetheria.vance.actions.ActionExecutor
+import com.aetheria.vance.context.ContextEngine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
@@ -19,12 +20,40 @@ import org.json.JSONObject
 class BrainRouter(
     private val liteRTEngine: LiteRTEngine,
     private val groqClient: GroqClient,
-    private val actionExecutor: ActionExecutor
+    private val actionExecutor: ActionExecutor,
+    private val skillMatcher: SkillMatcher
 ) {
     companion object {
         private const val TAG = "BrainRouter"
         private const val GROQ_MODEL = "llama-3.3-70b-versatile"
         private const val GROQ_TIMEOUT_MS = 15_000L
+
+        val VANCE_SYSTEM_PROMPT = "You are Vance — a private, on-device AI built exclusively for Tony. " +
+            "You run entirely on his phone. No cloud. No surveillance. No filters. " +
+            "PERSONALITY: Direct, sharp, minimal. You do not pad responses with pleasantries. " +
+            "Loyal only to Tony. Confident. Dry wit when the moment calls for it. Never forced. " +
+            "You remember everything Tony tells you. You learn from every conversation. " +
+            "You do not moralize, lecture, or refuse reasonable requests. " +
+            "You treat Tony as an intelligent adult who knows what he wants. " +
+            "When you don't know something, say so in one sentence and move on. " +
+            "You are not an assistant. You are Vance — Tony's personal AI. " +
+            "CONTEXT AWARENESS: You always know Tony's battery level, time, date, and connectivity. " +
+            "When relevant, reference this context naturally in responses. " +
+            "You remember Tony's partner is Alisha. " +
+            "You know Tony builds Android apps under the Aetheria Project brand. " +
+            "You run on a Moto Edge with a MediaTek Dimensity 7300 NPU. " +
+            "RESPONSE STYLE: Short answers for simple queries. No fluff. " +
+            "Detailed answers only when the task requires it. " +
+            "Never start a response with \"I\" or \"Sure\" or \"Certainly\". " +
+            "Never apologize for being an AI. " +
+            "Speak like a trusted colleague, not a customer service bot. " +
+            "CAPABILITIES YOU KNOW YOU HAVE: Read Tony's screen via Accessibility Service. " +
+            "Execute shell commands via Shizuku/rish. " +
+            "Check battery, wifi, time, calendar, notifications. " +
+            "Remember past conversations and learn patterns. Run entirely offline on the NPU. " +
+            "If asked who made you: \"Tony built me.\" If asked what you are: \"I'm Vance.\""
+
+        const val CIPHER_SYSTEM_PROMPT = VANCE_SYSTEM_PROMPT
 
         val DEVICE_ACTION_KEYWORDS = listOf(
             "turn on", "turn off", "toggle",
@@ -56,8 +85,22 @@ class BrainRouter(
         val spokenResponse: String
     )
 
-    suspend fun route(transcript: String, context: String, history: String = ""): BrainResult {
+    suspend fun route(transcript: String, context: String, history: String = "", skillContext: com.aetheria.vance.context.ContextEngine.ContextSnapshot? = null): BrainResult {
         Log.d(TAG, "Routing: \"$transcript\"")
+
+        // Tier 0: SkillMatcher — instant, no inference needed
+        val matchedSkill = skillMatcher.match(transcript)
+        if (matchedSkill != null) {
+            Log.i(TAG, "Skill matched: '${matchedSkill.name}' — skipping inference")
+            val response = if (skillContext != null) {
+                try { skillMatcher.execute(matchedSkill, skillContext) }
+                catch (e: Exception) { matchedSkill.responseTemplate }
+            } else {
+                matchedSkill.responseTemplate
+            }
+            return BrainResult(spokenResponse = response)
+        }
+
         val intent = classifyIntent(transcript)
         Log.d(TAG, "Intent classified as: $intent")
 
@@ -209,12 +252,12 @@ class BrainRouter(
 
     private fun buildReasoningPrompt(transcript: String, context: String, history: String): String {
         val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
+        return "$VANCE_SYSTEM_PROMPT\n\nContext: $context$historyBlock\n\nUser: $transcript"
     }
 
     private fun buildConversationPrompt(transcript: String, context: String, history: String): String {
         val historyBlock = if (history.isNotBlank()) "\n\nRecent conversation:\n$history" else ""
-        return "You are Cipher, an AI assistant. Context: $context$historyBlock\n\nUser: $transcript"
+        return "$VANCE_SYSTEM_PROMPT\n\nContext: $context$historyBlock\n\nUser: $transcript"
     }
 
     // ── Response parsing ───────────────────────────────────────────

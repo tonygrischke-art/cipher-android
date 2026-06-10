@@ -1,6 +1,7 @@
 package com.aetheria.vance.context
 
 import android.content.Context
+import android.util.Log
 import androidx.room.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -166,6 +167,40 @@ interface ContactMemoryDao {
     fun deleteByContactId(contactId: String)
 }
 
+// ── Skills ─────────────────────────────────────────────────────────
+
+@Entity(tableName = "skills")
+data class SkillEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val triggerPatterns: String,
+    val responseTemplate: String,
+    val actionType: String,
+    val confidenceScore: Float = 1.0f,
+    val useCount: Int = 0,
+    val lastUsed: Long = 0L,
+    val autoLearned: Boolean = false,
+    val approved: Boolean = true
+)
+
+@Dao
+interface SkillDao {
+    @Query("SELECT * FROM skills")
+    fun getAllSkills(): List<SkillEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertAll(vararg skills: SkillEntity)
+
+    @Query("SELECT * FROM skills WHERE approved = 1")
+    fun getApprovedSkills(): List<SkillEntity>
+
+    @Query("UPDATE skills SET useCount = useCount + 1, lastUsed = :now WHERE id = :id")
+    fun incrementUseCount(id: String, now: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM skills WHERE id = :id")
+    fun deleteById(id: String)
+}
+
 // ── Database ─────────────────────────────────────────────────────
 
 @Database(
@@ -174,9 +209,10 @@ interface ContactMemoryDao {
         PreferenceEntity::class,
         RoutineEntity::class,
         LocationMemoryEntity::class,
-        ContactMemoryEntity::class
+        ContactMemoryEntity::class,
+        SkillEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class CipherDatabase : RoomDatabase() {
@@ -185,6 +221,7 @@ abstract class CipherDatabase : RoomDatabase() {
     abstract fun routineDao(): RoutineDao
     abstract fun locationMemoryDao(): LocationMemoryDao
     abstract fun contactMemoryDao(): ContactMemoryDao
+    abstract fun skillDao(): SkillDao
 }
 
 // ── MemoryStore — high-level API ─────────────────────────────────
@@ -284,5 +321,22 @@ class MemoryStore(context: Context) {
     fun getForgottenContacts(daysAgo: Long): List<ContactMemoryEntity> {
         val cutoff = System.currentTimeMillis() - (daysAgo * 86400000L)
         return contacts.getNotContactedSince(cutoff)
+    }
+
+    // ── Skill helpers ───────────────────────────────────────────────
+
+    fun getAllSkills(): List<SkillEntity>? = try {
+        db.skillDao().getAllSkills()
+    } catch (e: Exception) {
+        Log.e("MemoryStore", "getAllSkills failed", e)
+        null
+    }
+
+    fun insertSkills(skills: List<SkillEntity>) {
+        try {
+            db.skillDao().insertAll(*skills.toTypedArray())
+        } catch (e: Exception) {
+            Log.e("MemoryStore", "insertSkills failed", e)
+        }
     }
 }

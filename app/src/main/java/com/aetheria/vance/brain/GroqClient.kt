@@ -1,5 +1,7 @@
 package com.aetheria.vance.brain
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -28,6 +30,7 @@ import kotlin.coroutines.resumeWithException
  * Call [complete] for non-streaming suspend call.
  */
 class GroqClient(
+    private val context: Context? = null,
     private val apiKey: String = "",
     private val baseUrl: String = "https://api.groq.com/openai/v1"
 ) {
@@ -184,7 +187,17 @@ class GroqClient(
 
     private fun resolveApiKey(): String {
         if (apiKey.isNotBlank()) return apiKey
-        // TODO: Load from EncryptedSharedPreferences
+        // Load from SharedPreferences
+        context?.let { ctx ->
+            try {
+                val prefs = ctx.getSharedPreferences("cipher_secure_prefs", Context.MODE_PRIVATE)
+                val key = prefs.getString("groq_api_key", "") ?: ""
+                if (key.isNotBlank()) return key
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load Groq key from prefs: ${e.message}")
+            }
+        }
+        Log.w(TAG, "Groq disabled — no API key set.")
         return ""
     }
 
