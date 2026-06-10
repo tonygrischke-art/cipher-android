@@ -25,7 +25,8 @@ class BrainRouter(
     private val skillMatcher: SkillMatcher,
     private val memoryRetriever: MemoryRetriever?,
     private val tfliteLlmEngine: TfliteLlmEngine?,
-    private val actionExecutor: ActionExecutor
+    private val actionExecutor: ActionExecutor,
+    private val memoryFineTuner: MemoryFineTuner
 ) {
     companion object {
         private const val TAG = "BrainRouter"
@@ -68,6 +69,10 @@ class BrainRouter(
         val actionJson: String? = null,
         val spokenResponse: String
     )
+
+    // Last interaction for feedback
+    private var lastPrompt: String = ""
+    private var lastResponse: String = ""
 
     private var chainLogged = false
 
@@ -115,6 +120,8 @@ class BrainRouter(
             val fastResult = fastLlmClient.complete(fullPrompt)
             if (fastResult != null) {
                 Log.i(TAG, "FastLlm responded for simple query")
+                lastPrompt = transcript
+                lastResponse = fastResult
                 return BrainResult(spokenResponse = fastResult)
             }
             Log.w(TAG, "FastLlm unavailable for simple query, falling through")
@@ -125,6 +132,8 @@ class BrainRouter(
             val npuResult = npuEngine.generate(fullPrompt)
             if (npuResult != null) {
                 Log.i(TAG, "NPU responded")
+                lastPrompt = transcript
+                lastResponse = npuResult
                 return BrainResult(spokenResponse = npuResult)
             }
             Log.w(TAG, "NPU returned null, falling through")
@@ -134,6 +143,8 @@ class BrainRouter(
         val mainResult = mainLlmClient.complete(fullPrompt)
         if (mainResult != null) {
             Log.i(TAG, "MainLlm responded")
+            lastPrompt = transcript
+            lastResponse = mainResult
             return BrainResult(spokenResponse = mainResult)
         }
         Log.w(TAG, "MainLlm unavailable")
@@ -146,6 +157,8 @@ class BrainRouter(
                 }
                 if (tfliteResult != null) {
                     Log.i(TAG, "TfliteLlmEngine responded")
+                    lastPrompt = transcript
+                    lastResponse = tfliteResult
                     return BrainResult(spokenResponse = tfliteResult)
                 }
             } catch (e: Exception) {
@@ -158,6 +171,14 @@ class BrainRouter(
         return BrainResult(
             spokenResponse = "Offline. Start local servers in Termux to enable responses."
         )
+    }
+
+    // Called by FloatingOrbService on user feedback (tap/long-press)
+    suspend fun recordFeedback(score: Int) {
+        if (lastPrompt.isNotBlank() && lastResponse.isNotBlank()) {
+            memoryFineTuner.enqueueSample(lastPrompt, lastResponse, score)
+            Log.d(TAG, "Recorded feedback score=$score for last interaction")
+        }
     }
 
     private fun isSimpleQuery(query: String): Boolean {

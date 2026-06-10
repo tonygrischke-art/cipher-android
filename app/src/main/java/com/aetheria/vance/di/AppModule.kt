@@ -8,6 +8,8 @@ import com.aetheria.vance.actions.SystemSettingHandler
 import com.aetheria.vance.brain.*
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.context.MemoryStore
+import com.aetheria.vance.context.MemoryDao
+import com.aetheria.vance.context.LoraCheckpointDao
 import com.aetheria.vance.context.RoutineEngine
 import com.aetheria.vance.shizuku.ShizukuBridge
 import com.aetheria.vance.voice.VoicePipeline
@@ -56,6 +58,28 @@ object AppModule {
     @Singleton
     fun provideMemoryStore(@ApplicationContext context: Context): MemoryStore {
         return MemoryStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryDao(memoryStore: MemoryStore): MemoryDao {
+        return memoryStore.memoryDao
+    }
+
+    @Provides
+    @Singleton
+    fun provideLoraCheckpointDao(memoryStore: MemoryStore): LoraCheckpointDao {
+        return memoryStore.loraCheckpointDao
+    }
+
+    @Provides
+    @Singleton
+    fun provideMemoryFineTuner(
+        memoryDao: MemoryDao,
+        loraCheckpointDao: LoraCheckpointDao,
+        @ApplicationContext context: Context
+    ): MemoryFineTuner {
+        return MemoryFineTuner(memoryDao, loraCheckpointDao, context)
     }
 
     @Provides
@@ -138,7 +162,8 @@ object AppModule {
         skillMatcher: SkillMatcher,
         memoryRetriever: MemoryRetriever,
         tfliteLlmEngine: TfliteLlmEngine,
-        actionExecutor: ActionExecutor
+        actionExecutor: ActionExecutor,
+        memoryFineTuner: MemoryFineTuner
     ): BrainRouter {
         return BrainRouter(
             fastLlmClient = fastLlmClient,
@@ -147,7 +172,8 @@ object AppModule {
             skillMatcher = skillMatcher,
             memoryRetriever = memoryRetriever,
             tfliteLlmEngine = tfliteLlmEngine,
-            actionExecutor = actionExecutor
+            actionExecutor = actionExecutor,
+            memoryFineTuner = memoryFineTuner
         )
     }
 

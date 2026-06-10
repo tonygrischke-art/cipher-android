@@ -167,6 +167,74 @@ interface ContactMemoryDao {
     suspend fun deleteByContactId(contactId: String)
 }
 
+// ── Memory (Reinforcement Learning) ───────────────────────────────
+
+@Entity(tableName = "memory",
+    indices = [Index("reinforcement_score")]
+)
+data class MemoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val prompt: String,
+    val response: String,
+    val reinforcementScore: Int = 0,
+    val source: String = "user",  // "user" | "web" | "curriculum"
+    val timestamp: Long = System.currentTimeMillis(),
+    val sessionId: String = "default"
+)
+
+@Dao
+interface MemoryDao {
+    @Query("SELECT * FROM memory WHERE reinforcement_score != 0 ORDER BY abs(reinforcement_score) DESC LIMIT :limit")
+    suspend fun getTrainingSamples(limit: Int): List<MemoryEntity>
+
+    @Query("UPDATE memory SET reinforcement_score = :score WHERE id = :id")
+    suspend fun updateReinforcementScore(id: Long, score: Int): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(memory: MemoryEntity): Long
+
+    @Query("SELECT * FROM memory ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecent(limit: Int): List<MemoryEntity>
+
+    @Query("SELECT COUNT(*) FROM memory WHERE reinforcement_score > 0")
+    suspend fun getPositiveCount(): Int
+
+    @Query("SELECT COUNT(*) FROM memory WHERE reinforcement_score < 0")
+    suspend fun getNegativeCount(): Int
+}
+
+// ── LoRA Checkpoints ──────────────────────────────────────────────
+
+@Entity(tableName = "lora_checkpoints")
+data class LoraCheckpointEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val filename: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val validationLoss: Double,
+    val isActive: Boolean = false
+)
+
+@Dao
+interface LoraCheckpointDao {
+    @Query("SELECT * FROM lora_checkpoints ORDER BY timestamp DESC")
+    suspend fun getAllCheckpoints(): List<LoraCheckpointEntity>
+
+    @Query("SELECT * FROM lora_checkpoints WHERE is_active = 1 LIMIT 1")
+    suspend fun getActiveCheckpoint(): LoraCheckpointEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(checkpoint: LoraCheckpointEntity): Long
+
+    @Query("UPDATE lora_checkpoints SET is_active = 0")
+    suspend fun deactivateAll(): Int
+
+    @Query("UPDATE lora_checkpoints SET is_active = 1 WHERE id = :id")
+    suspend fun activateCheckpoint(id: Int): Int
+
+    @Query("DELETE FROM lora_checkpoints WHERE id = :id")
+    suspend fun deleteCheckpoint(id: Int): Int
+}
+
 // ── Skills ─────────────────────────────────────────────────────────
 
 @Entity(tableName = "skills")
@@ -234,9 +302,11 @@ interface MemoryEmbeddingDao {
         LocationMemoryEntity::class,
         ContactMemoryEntity::class,
         SkillEntity::class,
-        MemoryEmbeddingEntity::class
+        MemoryEmbeddingEntity::class,
+        MemoryEntity::class,
+        LoraCheckpointEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class CipherDatabase : RoomDatabase() {
@@ -247,6 +317,8 @@ abstract class CipherDatabase : RoomDatabase() {
     abstract fun contactMemoryDao(): ContactMemoryDao
     abstract fun skillDao(): SkillDao
     abstract fun embeddingDao(): MemoryEmbeddingDao
+    abstract fun memoryDao(): MemoryDao
+    abstract fun loraCheckpointDao(): LoraCheckpointDao
 }
 
 // ── MemoryStore — high-level API ─────────────────────────────────
@@ -411,6 +483,11 @@ class MemoryStore(context: Context) {
     // ── Memory Embedding helpers (RAG) ──────────────────────────────
 
     val embeddings get() = db.embeddingDao()
+
+    // ── Memory (Reinforcement) helpers ──────────────────────────────
+
+    val memoryDao get() = db.memoryDao()
+    val loraCheckpointDao get() = db.loraCheckpointDao()
 
     // ── RAG backfill (Section 5) ─────────────────────────────────────
 
