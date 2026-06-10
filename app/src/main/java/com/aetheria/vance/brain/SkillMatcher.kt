@@ -40,11 +40,11 @@ class SkillMatcher(private val memoryStore: MemoryStore) {
     fun execute(skill: SkillEntity, ctx: ContextEngine.ContextSnapshot): String {
         return skill.responseTemplate
             .replace("{battery}", ctx.batteryLevel.toString())
-            .replace("{time}", ctx.currentTime)
-            .replace("{date}", ctx.currentDate)
-            .replace("{wifi}", ctx.wifiName ?: "no network")
-            .replace("{memory}", ctx.availableMemory)
-            .replace("{screen}", ctx.screenContent ?: "")
+            .replace("{time}", ctx.timeFormatted)
+            .replace("{date}", ctx.timeFormatted)
+            .replace("{wifi}", ctx.networkType)
+            .replace("{memory}", ctx.thermalState)
+            .replace("{screen}", ctx.foregroundApp)
     }
 
     suspend fun seedIfNeeded() = withContext(kotlinx.coroutines.Dispatchers.IO) {

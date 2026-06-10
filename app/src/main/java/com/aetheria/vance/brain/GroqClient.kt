@@ -1,7 +1,6 @@
 package com.aetheria.vance.brain
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -187,18 +186,23 @@ class GroqClient(
 
     private fun resolveApiKey(): String {
         if (apiKey.isNotBlank()) return apiKey
-        // Load from SharedPreferences
-        context?.let { ctx ->
-            try {
-                val prefs = ctx.getSharedPreferences("cipher_secure_prefs", Context.MODE_PRIVATE)
-                val key = prefs.getString("groq_api_key", "") ?: ""
-                if (key.isNotBlank()) return key
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to load Groq key from prefs: ${e.message}")
-            }
+        val ctx = context ?: run {
+            Log.w(TAG, "Groq disabled — no context available.")
+            return ""
         }
-        Log.w(TAG, "Groq disabled — no API key set.")
-        return ""
+        return try {
+            val prefs = ctx.getSharedPreferences("cipher_secure_prefs", Context.MODE_PRIVATE)
+            val key = prefs.getString("groq_api_key", "") ?: ""
+            if (key.isNotBlank()) {
+                key
+            } else {
+                Log.w(TAG, "Groq disabled — no API key set.")
+                ""
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load Groq key from prefs: ${e.message}")
+            ""
+        }
     }
 
     class GroqException(val code: Int, override val message: String) :

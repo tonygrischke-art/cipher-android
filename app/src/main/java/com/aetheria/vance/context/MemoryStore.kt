@@ -201,6 +201,29 @@ interface SkillDao {
     fun deleteById(id: String)
 }
 
+// ── Memory Embeddings (RAG) ───────────────────────────────────────
+
+@Entity(tableName = "memory_embeddings")
+data class MemoryEmbeddingEntity(
+    @PrimaryKey val id: String,
+    val conversationId: Long,
+    val embeddingBlob: ByteArray,
+    val inputText: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface MemoryEmbeddingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEmbedding(e: MemoryEmbeddingEntity)
+
+    @Query("SELECT * FROM memory_embeddings")
+    suspend fun getAllEmbeddings(): List<MemoryEmbeddingEntity>
+
+    @Query("SELECT COUNT(*) FROM memory_embeddings")
+    suspend fun getCount(): Int
+}
+
 // ── Database ─────────────────────────────────────────────────────
 
 @Database(
@@ -210,9 +233,10 @@ interface SkillDao {
         RoutineEntity::class,
         LocationMemoryEntity::class,
         ContactMemoryEntity::class,
-        SkillEntity::class
+        SkillEntity::class,
+        MemoryEmbeddingEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class CipherDatabase : RoomDatabase() {
@@ -222,6 +246,7 @@ abstract class CipherDatabase : RoomDatabase() {
     abstract fun locationMemoryDao(): LocationMemoryDao
     abstract fun contactMemoryDao(): ContactMemoryDao
     abstract fun skillDao(): SkillDao
+    abstract fun embeddingDao(): MemoryEmbeddingDao
 }
 
 // ── MemoryStore — high-level API ─────────────────────────────────
@@ -248,8 +273,26 @@ class MemoryStore(context: Context) {
         val now = System.currentTimeMillis()
         kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
             try {
-                conversations.insert(ConversationEntity(role = "user", content = userMessage, timestamp = now, sessionId = sessionId))
+                val savedId = conversations.insert(ConversationEntity(role = "user", content = userMessage, timestamp = now, sessionId = sessionId))
                 conversations.insert(ConversationEntity(role = "cipher", content = cipherResponse, timestamp = now + 1, sessionId = sessionId, actionType = actionType))
+
+                // Fire-and-forget embedding for RAG
+                try {
+                    val text = "User: $userMessage → Vance: $cipherResponse"
+                    val embedding = com.aetheria.vance.brain.MemoryEmbedder.embed(text)
+                    val blob = com.aetheria.vance.brain.floatsToBytes(embedding)
+                    embeddings.insertEmbedding(
+                        MemoryEmbeddingEntity(
+                            id = java.util.UUID.randomUUID().toString(),
+                            conversationId = savedId,
+                            embeddingBlob = blob,
+                            inputText = text,
+                            timestamp = now
+                        )
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("MemoryStore", "Embedding failed silently: ${e.message}")
+                }
             } catch (e: Exception) {
                 android.util.Log.e("MemoryStore", "saveExchange failed", e)
             }
@@ -339,4 +382,8 @@ class MemoryStore(context: Context) {
             Log.e("MemoryStore", "insertSkills failed", e)
         }
     }
+
+    // ── Memory Embedding helpers (RAG) ──────────────────────────────
+
+    val embeddings get() = db.embeddingDao()
 }

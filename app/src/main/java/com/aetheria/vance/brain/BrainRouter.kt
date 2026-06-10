@@ -73,12 +73,8 @@ class BrainRouter(
             "review", "describe", "define", "translate"
         )
 
-        const val CIPHER_SYSTEM_PROMPT = "You are Cipher, an autonomous AI agent running on an Android device. " +
-            "You have access to shell commands via Shizuku, can interact with any app via Accessibility Service, " +
-            "and can read/send messages. Be concise. When executing actions respond with JSON action blocks."
+        enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION }
     }
-
-    enum class Intent { DEVICE_ACTION, REASONING, CONVERSATION }
 
     data class BrainResult(
         val actionJson: String? = null,
@@ -144,7 +140,7 @@ class BrainRouter(
         // Tier 2: Groq fallback
         val groqResponse = try {
             withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Groq fallback failed", e)
@@ -183,7 +179,7 @@ class BrainRouter(
         // Tier 2: Groq fallback
         val groqResponse = try {
             withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Groq fallback failed", e)
@@ -231,7 +227,7 @@ class BrainRouter(
         // Tier 3: Groq fallback
         val groqResponse = try {
             withTimeoutOrNull(GROQ_TIMEOUT_MS) {
-                groqClient.complete(prompt, GROQ_MODEL, CIPHER_SYSTEM_PROMPT)
+                groqClient.complete(prompt, GROQ_MODEL, VANCE_SYSTEM_PROMPT)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Groq fallback failed", e)

@@ -57,8 +57,6 @@ class VanceCoreService : Service() {
 
     private lateinit var skillMatcher: SkillMatcher
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
     private lateinit var powerManager: PowerManager
     private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
     @Volatile private var isThermallyThrottled = false
