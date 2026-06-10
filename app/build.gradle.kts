@@ -126,9 +126,9 @@ dependencies {
     implementation("com.google.mediapipe:tasks-core:0.10.14")
 
     // LiteRT 2.x — CompiledModel API with NPU support
-    implementation("com.google.ai.edge.litert:litert:2.1.0")
-    implementation("com.google.ai.edge.litert:litert-gpu:2.1.0")
-    implementation("com.google.ai.edge.litert:litert-lm:2.1.0")
+implementation("com.google.ai.edge.litert:litert:2.0.0")
+implementation("com.google.ai.edge.litert:litert-gpu:2.0.0")
+implementation("com.google.ai.edge.litert:litert-lm:2.0.0")
 
     // TensorFlow Lite — NNAPI delegate for MediaTek MT6878 NPU
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
