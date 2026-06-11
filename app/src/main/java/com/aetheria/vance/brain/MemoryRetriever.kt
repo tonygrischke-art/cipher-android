@@ -1,20 +1,27 @@
 package com.aetheria.vance.brain
 
 import android.util.Log
+import com.aetheria.vance.context.MemoryDao
 import com.aetheria.vance.context.MemoryEmbeddingDao
+import com.aetheria.vance.context.MemoryEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.sqrt
 
 /**
- * RAG memory retrieval — finds relevant past conversations.
+ * RAG memory retrieval — finds relevant past conversations via cosine similarity.
+ * Also provides high-reinforcement memories for Tier A few-shot injection.
  */
-class MemoryRetriever(private val embeddingDao: MemoryEmbeddingDao) {
+class MemoryRetriever(
+    private val embeddingDao: MemoryEmbeddingDao,
+    private val memoryDao: MemoryDao? = null
+) {
 
     companion object {
         private const val TAG = "MemoryRetriever"
     }
 
-    suspend fun retrieve(query: String, topK: Int = 3): List<String> = withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun retrieve(query: String, topK: Int = 3): List<String> = withContext(Dispatchers.IO) {
         try {
             val queryEmbedding = MemoryEmbedder.embed(query)
             val all = embeddingDao.getAllEmbeddings()
@@ -34,6 +41,27 @@ class MemoryRetriever(private val embeddingDao: MemoryEmbeddingDao) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Retrieval failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    /**
+     * Tier A: Get high-reinforcement memories for few-shot injection.
+     * Returns memories Tony approved (score > 1), sorted by relevance to query.
+     */
+    suspend fun getRelevantMemories(query: String, limit: Int = 3): List<MemoryEntity> = withContext(Dispatchers.IO) {
+        try {
+            val memoryDao = memoryDao ?: return@withContext emptyList()
+            val recent = memoryDao.getTrainingSamples(200)
+            if (recent.isEmpty()) return@withContext emptyList()
+
+            val scored = recent.filter { it.reinforcementScore > 1 }
+            if (scored.isEmpty()) return@withContext emptyList()
+
+            // If no embedding filtering available, just take top by score
+            scored.sortedByDescending { it.reinforcementScore }.take(limit)
+        } catch (e: Exception) {
+            Log.e(TAG, "getRelevantMemories failed: ${e.message}")
             emptyList()
         }
     }

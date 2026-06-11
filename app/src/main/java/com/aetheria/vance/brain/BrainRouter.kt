@@ -17,6 +17,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   5. TfliteLlmEngine    → existing MediaPipe path, last resort
  *
  * If ALL fail → "Offline. Start local servers in Termux to enable responses."
+ *
+ * Self-learning tiers:
+ *   Tier A: In-context learning via few-shot from high-reinforcement memories
+ *   Tier B: Preference vector evolution — scores candidates, drifts toward Tony's taste
+ *   Tier C: LoRA adapter merging via Termux/Shizuku (CPU tiers only)
  */
 class BrainRouter(
     private val fastLlmClient: FastLlmClient,
@@ -26,7 +31,9 @@ class BrainRouter(
     private val memoryRetriever: MemoryRetriever?,
     private val tfliteLlmEngine: TfliteLlmEngine?,
     private val actionExecutor: ActionExecutor,
-    private val memoryFineTuner: MemoryFineTuner
+    private val memoryFineTuner: MemoryFineTuner,
+    private val preferenceEngine: PreferenceEngine? = null,
+    private val loraEvolutionManager: LoraEvolutionManager? = null
 ) {
     companion object {
         private const val TAG = "BrainRouter"
@@ -129,12 +136,21 @@ class BrainRouter(
 
         // Tier 2: NPU engine (primary for complex queries)
         if (npuEngine.isInitialised) {
-            val npuResult = npuEngine.generate(fullPrompt)
+            // Tier A: inject few-shot examples from high-reinforcement memories
+            val adaptedPrompt = buildAdaptivePrompt(transcript, fullPrompt)
+            val npuResult = npuEngine.generate(adaptedPrompt)
             if (npuResult != null) {
-                Log.i(TAG, "NPU responded")
+                // Tier B: preference scoring — if response is short, try a second candidate
+                val finalResult = if (preferenceEngine != null && npuResult.length < 100) {
+                    val candidate2 = npuEngine.generate(adaptedPrompt)
+                    if (candidate2 != null) {
+                        preferenceEngine.selectBest(listOf(npuResult, candidate2))
+                    } else npuResult
+                } else npuResult
+                Log.i(TAG, "NPU responded (adaptive=${adaptedPrompt.length > fullPrompt.length})")
                 lastPrompt = transcript
-                lastResponse = npuResult
-                return BrainResult(spokenResponse = npuResult)
+                lastResponse = finalResult
+                return BrainResult(spokenResponse = finalResult)
             }
             Log.w(TAG, "NPU returned null, falling through")
         }
@@ -173,10 +189,27 @@ class BrainRouter(
         )
     }
 
-    // Called by FloatingOrbService on user feedback (tap/long-press)
+    // Called by FloatingOrbService / chat UI on user feedback (tap/long-press)
     suspend fun recordFeedback(score: Int) {
         if (lastPrompt.isNotBlank() && lastResponse.isNotBlank()) {
+            // Tier A/C: store in reinforcement memory
             memoryFineTuner.enqueueSample(lastPrompt, lastResponse, score)
+
+            // Tier B: update preference vector
+            if (preferenceEngine != null) {
+                if (score > 0) preferenceEngine.reinforce(lastResponse, strength = score * 0.05f)
+                else preferenceEngine.penalize(lastResponse, strength = (-score) * 0.04f)
+            }
+
+            // Tier C: update LoRA adapter fitness
+            if (loraEvolutionManager != null) {
+                val activeAdapter = loraEvolutionManager.getActiveAdapterPath()
+                    ?.let { java.io.File(it).nameWithoutExtension }
+                if (activeAdapter != null) {
+                    loraEvolutionManager.updateFitness(activeAdapter, score * 1f)
+                }
+            }
+
             Log.d(TAG, "Recorded feedback score=$score for last interaction")
         }
     }
@@ -203,6 +236,28 @@ class BrainRouter(
                 }
             }
             append("\n\nUser: $query")
+        }
+    }
+
+    /**
+     * Tier A — In-Context Learning: inject few-shot examples from
+     * high-reinforcement memories as behavioral guidance.
+     */
+    private fun buildAdaptivePrompt(userQuery: String, basePrompt: String): String {
+        val relevant = memoryRetriever?.getRelevantMemories(userQuery) ?: return basePrompt
+        val fewShotExamples = relevant
+            .filter { it.reinforcementScore > 1 }
+            .take(3)
+
+        if (fewShotExamples.isEmpty()) return basePrompt
+
+        return buildString {
+            append("EXAMPLES OF GOOD RESPONSES (learn from these):\n")
+            fewShotExamples.forEach { mem ->
+                append("Q: ${mem.prompt}\n")
+                append("A: ${mem.response}\n\n")
+            }
+            append("---\n\n$basePrompt")
         }
     }
 }

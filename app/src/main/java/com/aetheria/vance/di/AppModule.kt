@@ -85,7 +85,22 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMemoryRetriever(memoryStore: MemoryStore): MemoryRetriever {
-        return MemoryRetriever(memoryStore.embeddings)
+        return MemoryRetriever(memoryStore.embeddings, memoryStore.memoryDao)
+    }
+
+    @Provides
+    @Singleton
+    fun providePreferenceEngine(@ApplicationContext context: Context): PreferenceEngine {
+        return PreferenceEngine(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideLoraEvolutionManager(
+        @ApplicationContext context: Context,
+        shizukuBridge: ShizukuBridge
+    ): LoraEvolutionManager {
+        return LoraEvolutionManager(context, shizukuBridge)
     }
 
     @Provides
@@ -163,7 +178,9 @@ object AppModule {
         memoryRetriever: MemoryRetriever,
         tfliteLlmEngine: TfliteLlmEngine,
         actionExecutor: ActionExecutor,
-        memoryFineTuner: MemoryFineTuner
+        memoryFineTuner: MemoryFineTuner,
+        preferenceEngine: PreferenceEngine,
+        loraEvolutionManager: LoraEvolutionManager
     ): BrainRouter {
         return BrainRouter(
             fastLlmClient = fastLlmClient,
@@ -173,7 +190,9 @@ object AppModule {
             memoryRetriever = memoryRetriever,
             tfliteLlmEngine = tfliteLlmEngine,
             actionExecutor = actionExecutor,
-            memoryFineTuner = memoryFineTuner
+            memoryFineTuner = memoryFineTuner,
+            preferenceEngine = preferenceEngine,
+            loraEvolutionManager = loraEvolutionManager
         )
     }
 

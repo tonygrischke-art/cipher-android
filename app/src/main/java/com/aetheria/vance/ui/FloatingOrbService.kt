@@ -152,6 +152,9 @@ class FloatingOrbService : Service() {
                 private var isDragging = false
                 private var tapCount = 0
                 private var lastTapTime = 0L
+                private var longPressHandler = android.os.Handler(android.os.Looper.getMainLooper())
+                private var longPressTriggered = false
+                private var longPressStartTime = 0L
 
                 override fun onTouch(v: View?, event: MotionEvent?): Boolean {
                     when (event?.action) {
@@ -161,18 +164,36 @@ class FloatingOrbService : Service() {
                             initialTouchX = event.rawX
                             initialTouchY = event.rawY
                             isDragging = false
+                            longPressTriggered = false
+                            longPressStartTime = System.currentTimeMillis()
+                            // Schedule long-press detection at 600ms
+                            longPressHandler.postDelayed({
+                                if (!isDragging && !longPressTriggered) {
+                                    longPressTriggered = true
+                                    longPressHandler.removeCallbacksAndMessages(null)
+                                    onOrbLongPress()
+                                }
+                            }, 600L)
                             return true
                         }
                         MotionEvent.ACTION_MOVE -> {
                             val dx = abs(event.rawX - initialTouchX)
                             val dy = abs(event.rawY - initialTouchY)
-                            if (dx > 10 || dy > 10) isDragging = true
+                            if (dx > 10 || dy > 10) {
+                                isDragging = true
+                                longPressHandler.removeCallbacksAndMessages(null)
+                            }
                             params.x = initialX + (event.rawX - initialTouchX).toInt()
                             params.y = initialY + (event.rawY - initialTouchY).toInt()
                             windowManager?.updateViewLayout(orbView, params)
                             return true
                         }
                         MotionEvent.ACTION_UP -> {
+                            longPressHandler.removeCallbacksAndMessages(null)
+                            if (longPressTriggered) {
+                                // Already handled by long-press
+                                return true
+                            }
                             if (!isDragging) {
                                 val now = System.currentTimeMillis()
                                 if (now - lastTapTime < 300) {
@@ -234,6 +255,17 @@ class FloatingOrbService : Service() {
         sendBroadcast(Intent("com.aetheria.vance.TOGGLE_MUTE").apply {
             setPackage(packageName)
         })
+    }
+
+    private fun onOrbLongPress() {
+        Log.d(TAG, "Orb long-pressed — opening feedback UI")
+        // Long press → open chat with feedback prompt
+        val intent = Intent(this, VanceChatActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra("show_chat", true)
+            putExtra("feedback_mode", true)
+        }
+        startActivity(intent)
     }
 }
 
