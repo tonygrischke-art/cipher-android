@@ -260,6 +260,51 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_aetheria_vance_brain_NeuronBridge_nativeIsAvailable(
+    JNIEnv* /*env*/, jobject /*thiz*/)
+{
+    // Quick probe: load TFLite symbols + adapter
+    if (!loadTFLite()) {
+        LOGE("[APU] nativeIsAvailable: loadTFLite failed");
+        return JNI_FALSE;
+    }
+    void* adapter = loadAdapter();
+    if (!adapter) {
+        LOGE("[APU] nativeIsAvailable: loadAdapter failed");
+        return JNI_FALSE;
+    }
+    if (!resolveAdapter(adapter)) {
+        LOGE("[APU] nativeIsAvailable: resolveAdapter failed");
+        dlclose(adapter);
+        return JNI_FALSE;
+    }
+    // Check if NPU device exists
+    uint32_t deviceCount = 0;
+    if (g_adapter.getDeviceCount && g_adapter.getDeviceCount(&deviceCount) == 0) {
+        if (deviceCount > 0) {
+            // Check for NPU type device
+            for (uint32_t i = 0; i < deviceCount; ++i) {
+                ANeuralNetworksDevice* device = nullptr;
+                if (g_adapter.getDevice(i, &device) == 0 && device) {
+                    int32_t type = -1;
+                    if (g_adapter.Device_getType(device, &type) == 0) {
+                        // NPU device type constant from NNAPI (ANEURALNETWORKS_DEVICE_TYPE_NPU = 3)
+                    if (type == 3) {
+                            LOGI("[APU] nativeIsAvailable: NPU device found ✓");
+                            dlclose(adapter);
+                            return JNI_TRUE;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    dlclose(adapter);
+    LOGI("[APU] nativeIsAvailable: No NPU device found");
+    return JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     JNIEnv* env, jobject /*thiz*/,
