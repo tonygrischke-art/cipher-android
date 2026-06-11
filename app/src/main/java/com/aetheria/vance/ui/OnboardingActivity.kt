@@ -144,7 +144,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             Log.d("Onboarding", "Triggering model copy...")
             try {
-                liteRTEngine.copyModelsIfNeeded()
+                // Model copy handled by Termux — models go to /data/local/tmp/cipher_models/
+                Log.d("Onboarding", "Model copy skipped (Termux-managed)")
                 Log.d("Onboarding", "Model copy complete")
             } catch (e: Exception) {
                 Log.e("Onboarding", "Model copy failed: ${e.message}")

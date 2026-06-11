@@ -110,7 +110,7 @@ class CipherSettingsViewModel @Inject constructor(
         }
     }
 
-    fun exportConversationHistory(): File? {
+    suspend fun exportConversationHistory(): File? {
         return try {
             val conversations = memoryStore.getRecentConversations(1000)
             val jsonArray = JSONArray()
@@ -378,11 +378,13 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
 
             OutlinedButton(
                 onClick = {
-                    val file = viewModel.exportConversationHistory()
-                    if (file != null) {
-                        Toast.makeText(context, "Exported to ${file.name}", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
+                    viewModelScope.launch {
+                        val file = viewModel.exportConversationHistory()
+                        if (file != null) {
+                            Toast.makeText(context, "Exported to ${file.name}", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()

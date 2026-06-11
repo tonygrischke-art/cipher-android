@@ -43,11 +43,13 @@ class BootReceiver : BroadcastReceiver() {
                     return
                 }
             }
-            Log.i(TAG, "Smoke test: TfliteLlmEngine.init(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
+            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
             val engine = com.aetheria.vance.brain.TfliteLlmEngine(context)
-            val success = engine.init(testFile)
-            Log.i(TAG, "Smoke test: TfliteLlmEngine.init() = $success")
-            engine.close()
+            kotlinx.coroutines.runBlocking {
+                engine.initialize(testFile.absolutePath)
+            }
+            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize() done")
+            engine.release()
         } catch (e: Exception) {
             Log.e(TAG, "Smoke test: TfliteLlmEngine failed: ${e.message}")
         }
@@ -56,7 +58,7 @@ class BootReceiver : BroadcastReceiver() {
     private fun runNpuSmokeTest(context: Context) {
         Log.i(TAG, "NPU: checking NeuronBridge.isAvailable...")
         val available = try {
-            NeuronBridge.isAvailable
+            NeuronBridge.isAvailable()
         } catch (e: Throwable) {
             Log.e(TAG, "NPU: NeuronBridge.isAvailable threw: ${e.message}")
             false
