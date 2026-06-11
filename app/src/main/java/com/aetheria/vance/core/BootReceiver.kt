@@ -43,13 +43,13 @@ class BootReceiver : BroadcastReceiver() {
                     return
                 }
             }
-            Log.i(TAG, "Smoke test: TfliteEngine.init(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
-            val engine = com.aetheria.vance.brain.TfliteEngine(context)
+            Log.i(TAG, "Smoke test: TfliteLlmEngine.init(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
+            val engine = com.aetheria.vance.brain.TfliteLlmEngine(context)
             val success = engine.init(testFile)
-            Log.i(TAG, "Smoke test: TfliteEngine.init() = $success")
+            Log.i(TAG, "Smoke test: TfliteLlmEngine.init() = $success")
             engine.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Smoke test: TfliteEngine failed: ${e.message}")
+            Log.e(TAG, "Smoke test: TfliteLlmEngine failed: ${e.message}")
         }
     }
 

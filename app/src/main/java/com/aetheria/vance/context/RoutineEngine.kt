@@ -259,7 +259,7 @@ class RoutineEngine(
 
     // ── Public API ─────────────────────────────────────────────────
 
-    fun addCustomRoutine(
+    suspend fun addCustomRoutine(
         triggerType: String,
         triggerValue: String,
         actionType: String,

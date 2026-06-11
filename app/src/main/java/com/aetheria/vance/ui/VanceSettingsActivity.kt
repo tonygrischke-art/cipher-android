@@ -112,7 +112,7 @@ class CipherSettingsViewModel @Inject constructor(
 
     fun exportConversationHistory(): File? {
         return try {
-            val conversations = memoryStore.getRecentExchanges(1000)
+            val conversations = memoryStore.getRecentConversations(1000)
             val jsonArray = JSONArray()
             conversations.forEach { entity ->
                 val obj = JSONObject().apply {

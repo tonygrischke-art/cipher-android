@@ -63,7 +63,7 @@ class BrainRouter(
             "Remember past conversations and learn patterns. Run entirely offline on the NPU. " +
             "If asked who made you: \"Tony built me.\" If asked what you are: \"I'm Vance.\""
 
-        const val CIPHER_SYSTEM_PROMPT = VANCE_SYSTEM_PROMPT
+        val CIPHER_SYSTEM_PROMPT = VANCE_SYSTEM_PROMPT
 
         private val SIMPLE_KEYWORDS = listOf(
             "battery", "time", "wifi", "wi-fi", "memory", "ram",
@@ -243,7 +243,7 @@ class BrainRouter(
      * Tier A — In-Context Learning: inject few-shot examples from
      * high-reinforcement memories as behavioral guidance.
      */
-    private fun buildAdaptivePrompt(userQuery: String, basePrompt: String): String {
+    private suspend fun buildAdaptivePrompt(userQuery: String, basePrompt: String): String {
         val relevant = memoryRetriever?.getRelevantMemories(userQuery) ?: return basePrompt
         val fewShotExamples = relevant
             .filter { it.reinforcementScore > 1 }

@@ -102,7 +102,7 @@ class CipherChatViewModel @Inject constructor(
 
     private fun loadHistory() {
         viewModelScope.launch(Dispatchers.IO) {
-            val recent = memoryStore.getRecentExchanges(50)
+            val recent = memoryStore.getRecentConversations(50)
             val msgs = recent.map { entity ->
                 ChatMessage(
                     text = entity.content,
