@@ -150,7 +150,7 @@ class BrainRouter(
         Log.w(TAG, "MainLlm unavailable")
 
         // Tier 4: TfliteLlmEngine — last resort
-        if (tfliteLlmEngine != null && tfliteLlmEngine.isReady()) {
+        if (tfliteLlmEngine != null && tfliteLlmEngine.isReady) {
             try {
                 val tfliteResult = withTimeoutOrNull(45_000L) {
                     tfliteLlmEngine.generate(fullPrompt)

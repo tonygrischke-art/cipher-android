@@ -26,7 +26,7 @@ class TfliteLlmEngine(private val context: Context) {
     }
 
     private var llmEngine: LlmInference? = null
-    private var isReady = false
+    internal var isReady = false
 
     suspend fun initialize(modelPath: String): Boolean =
         withContext(Dispatchers.IO) {

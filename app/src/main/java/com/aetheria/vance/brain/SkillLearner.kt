@@ -23,7 +23,7 @@ class SkillLearner(private val memoryStore: MemoryStore) {
 
     fun observe(query: String, response: String, success: Boolean) {
         if (buffer.size >= 50) buffer.removeFirst()
-        buffer.addLast(Triple(query, response, success))
+        buffer.add(Triple(query, response, success))
         interactionCount++
         if (interactionCount % ANALYZE_INTERVAL == 0) {
             kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch { analyzePatterns() }

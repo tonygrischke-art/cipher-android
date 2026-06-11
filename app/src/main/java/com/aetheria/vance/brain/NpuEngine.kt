@@ -9,6 +9,9 @@ import kotlinx.coroutines.withContext
  * NPU inference engine using libneuron_bridge.so (Phase 2: TFLite C API + NNAPI SL shim).
  * Loads model via TFLite C API, delegates to MediaTek Neuron Adapter (MT6878 NPU).
  * No MediaPipe GenAI dependency at runtime — pure native.
+ *
+ * This class wraps NeuronBridge and exposes a simple init/generate/close API.
+ * JNI methods are declared in NeuronBridge (companion object with external fun).
  */
 class NpuEngine(private val context: Context) {
 
@@ -37,7 +40,7 @@ class NpuEngine(private val context: Context) {
         Log.i(TAG, "Init from: $modelPath")
 
         // Probe NPU availability
-        val available = NeuronBridge.nativeIsAvailable()
+        val available = NeuronBridge.isAvailable()
         Log.i(TAG, "NPU available: $available")
         if (!available) {
             Log.w(TAG, "NPU not available, engine will not initialise")

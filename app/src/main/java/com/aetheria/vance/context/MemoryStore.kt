@@ -3,6 +3,8 @@ package com.aetheria.vance.context
 import android.content.Context
 import android.util.Log
 import androidx.room.*
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -233,6 +235,76 @@ interface LoraCheckpointDao {
 
     @Query("DELETE FROM lora_checkpoints WHERE id = :id")
     suspend fun deleteCheckpoint(id: Int): Int
+}
+
+// ── Web Knowledge (PR #3) ──────────────────────────────────────────
+
+@Entity(tableName = "web_knowledge",
+    indices = [Index("cosine_score"), Index("timestamp")]
+)
+data class WebKnowledgeEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val url: String,
+    val content: String,
+    @ColumnInfo(name = "embedding") val embeddingBlob: ByteArray,
+    @ColumnInfo(name = "cosine_score") val cosineScore: Float,
+    val timestamp: Long = System.currentTimeMillis(),
+    val keywords: String
+)
+
+@Dao
+interface WebKnowledgeDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(entity: WebKnowledgeEntity): Long
+
+    @Query("SELECT * FROM web_knowledge ORDER BY cosine_score DESC LIMIT :limit")
+    suspend fun getTopCurriculum(limit: Int): List<WebKnowledgeEntity>
+
+    @Query("DELETE FROM web_knowledge WHERE timestamp < :cutoff")
+    suspend fun pruneOlderThan(cutoff: Long): Int
+
+    @Query("SELECT COUNT(*) FROM web_knowledge")
+    suspend fun getCount(): Int
+}
+
+// ── Wake Word Samples (PR #7) ──────────────────────────────────────
+
+@Entity(tableName = "wake_samples",
+    indices = [Index("label"), Index("timestamp")]
+)
+data class WakeSampleEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @ColumnInfo(name = "pcm_bytes") val pcmBytes: ByteArray,
+    @ColumnInfo(name = "mfcc_bytes") val mfccBytes: ByteArray,
+    val label: Int,  // 0=noise, 1=partial, 2=wake
+    @ColumnInfo(name = "confirmed_by_user") val confirmedByUser: Boolean,
+    val confidence: Float,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface WakeSampleDao {
+    @Query("SELECT * FROM wake_samples ORDER BY timestamp DESC")
+    suspend fun getAll(): List<WakeSampleEntity>
+
+    @Query("SELECT COUNT(*) FROM wake_samples WHERE label = :label")
+    suspend fun countByLabel(label: Int): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(sample: WakeSampleEntity): Long
+
+    @Query("DELETE FROM wake_samples WHERE id IN " +
+           "(SELECT id FROM wake_samples ORDER BY timestamp ASC LIMIT :n)")
+    suspend fun deleteOldest(n: Int): Int
+
+    @Query("SELECT COUNT(*) FROM wake_samples")
+    suspend fun total(): Int
+
+    @Query("UPDATE wake_samples SET label = :label, confirmed_by_user = 1 WHERE id = :id")
+    suspend fun relabelSample(id: Int, label: Int): Int
+
+    @Query("UPDATE wake_samples SET confirmed_by_user = 1 WHERE id = :id")
+    suspend fun markConfirmed(id: Int): Int
 }
 
 // ── Skills ─────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class RoutineEngine(
@@ -91,13 +92,14 @@ class RoutineEngine(
             if (level < 0 || scale <= 0) return
             val pct = level * 100 / scale
 
-            // Check battery-level routines
-            val batteryRoutines = memoryStore.routines.getByTriggerType("battery")
-            for (routine in batteryRoutines) {
-                val threshold = routine.triggerValue.toIntOrNull() ?: continue
-                if (pct <= threshold) {
-                    Log.d(TAG, "Battery routine triggered: ${routine.label} (level=$pct, threshold=$threshold)")
-                    executeRoutine(routine)
+            scope.launch {
+                val batteryRoutines = memoryStore.routines.getByTriggerType("battery")
+                for (routine in batteryRoutines) {
+                    val threshold = routine.triggerValue.toIntOrNull() ?: continue
+                    if (pct <= threshold) {
+                        Log.d(TAG, "Battery routine triggered: ${routine.label} (level=$pct, threshold=$threshold)")
+                        executeRoutine(routine)
+                    }
                 }
             }
         }
@@ -115,10 +117,12 @@ class RoutineEngine(
                 com.aetheria.vance.accessibility.VanceAccessibilityService.EXTRA_PACKAGE_NAME
             ) ?: return
 
-            val appRoutines = memoryStore.routines.getByTrigger("app", packageName)
-            for (routine in appRoutines) {
-                Log.d(TAG, "App routine triggered: ${routine.label} (app=$packageName)")
-                executeRoutine(routine)
+            scope.launch {
+                val appRoutines = memoryStore.routines.getByTrigger("app", packageName)
+                for (routine in appRoutines) {
+                    Log.d(TAG, "App routine triggered: ${routine.label} (app=$packageName)")
+                    executeRoutine(routine)
+                }
             }
         }
     }
@@ -149,27 +153,29 @@ class RoutineEngine(
     }
 
     private fun checkTimeRoutines() {
-        val now = java.util.Calendar.getInstance()
-        val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
-        val minute = now.get(java.util.Calendar.MINUTE)
-        val dayOfWeek = now.get(java.util.Calendar.DAY_OF_WEEK)
-        val timeStr = String.format("%02d:%02d", hour, minute)
+        scope.launch {
+            val now = java.util.Calendar.getInstance()
+            val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
+            val minute = now.get(java.util.Calendar.MINUTE)
+            val dayOfWeek = now.get(java.util.Calendar.DAY_OF_WEEK)
+            val timeStr = String.format("%02d:%02d", hour, minute)
 
-        val timeRoutines = memoryStore.routines.getByTriggerType("time")
-        for (routine in timeRoutines) {
-            // triggerValue format: "HH:MM" or "HH:MM:DAY" where day=1-7 (Sun=1)
-            val parts = routine.triggerValue.split(":")
-            if (parts.size >= 2) {
-                val routineHour = parts[0].trim().toIntOrNull() ?: continue
-                val routineMin = parts[1].trim().toIntOrNull() ?: continue
-                if (routineHour == hour && routineMin == minute) {
-                    // Check day if specified
-                    if (parts.size >= 3) {
-                        val routineDay = parts[2].trim().toIntOrNull() ?: continue
-                        // Convert Calendar day (1=Sun) to check
-                        if (routineDay != dayOfWeek) continue
+            val timeRoutines = memoryStore.routines.getByTriggerType("time")
+            for (routine in timeRoutines) {
+                // triggerValue format: "HH:MM" or "HH:MM:DAY" where day=1-7 (Sun=1)
+                val parts = routine.triggerValue.split(":")
+                if (parts.size >= 2) {
+                    val routineHour = parts[0].trim().toIntOrNull() ?: continue
+                    val routineMin = parts[1].trim().toIntOrNull() ?: continue
+                    if (routineHour == hour && routineMin == minute) {
+                        // Check day if specified
+                        if (parts.size >= 3) {
+                            val routineDay = parts[2].trim().toIntOrNull() ?: continue
+                            // Convert Calendar day (1=Sun) to check
+                            if (routineDay != dayOfWeek) continue
+                        }
+                        executeRoutine(routine)
                     }
-                    executeRoutine(routine)
                 }
             }
         }
@@ -178,55 +184,57 @@ class RoutineEngine(
     // ── Default Routines ───────────────────────────────────────────
 
     private fun initializeDefaultRoutines() {
-        if (memoryStore.routines.getEnabled().isNotEmpty()) return
-        Log.d(TAG, "Creating default routines")
+        scope.launch {
+            if (memoryStore.routines.getEnabled().isNotEmpty()) return@launch
+            Log.d(TAG, "Creating default routines")
 
-        // Morning briefing at 7:00 AM
-        memoryStore.addRoutine(
-            triggerType = "time",
-            triggerValue = "07:00",
-            actionJson = JSONObject().apply {
-                put("action_type", "REASONING")
-                put("parameters", JSONObject().apply {
-                    put("query", "Give me a morning briefing: weather, calendar, notifications, and any important items.")
-                })
-                put("spoken_response", "Here's your morning briefing.")
-            }.toString(),
-            label = "Morning Briefing"
-        )
+            // Morning briefing at 7:00 AM
+            memoryStore.addRoutine(
+                triggerType = "time",
+                triggerValue = "07:00",
+                actionJson = JSONObject().apply {
+                    put("action_type", "REASONING")
+                    put("parameters", JSONObject().apply {
+                        put("query", "Give me a morning briefing: weather, calendar, notifications, and any important items.")
+                    })
+                    put("spoken_response", "Here's your morning briefing.")
+                }.toString(),
+                label = "Morning Briefing"
+            )
 
-        // Battery below 20% → enable power saving
-        memoryStore.addRoutine(
-            triggerType = "battery",
-            triggerValue = "20",
-            actionJson = JSONObject().apply {
-                put("action_type", "SYSTEM_SETTING")
-                put("parameters", JSONObject().apply {
-                    put("setting", "battery_saver")
-                    put("value", "on")
-                })
-                put("spoken_response", "Battery is low. I've enabled power saving mode.")
-            }.toString(),
-            label = "Low Battery Power Save"
-        )
+            // Battery below 20% → enable power saving
+            memoryStore.addRoutine(
+                triggerType = "battery",
+                triggerValue = "20",
+                actionJson = JSONObject().apply {
+                    put("action_type", "SYSTEM_SETTING")
+                    put("parameters", JSONObject().apply {
+                        put("setting", "battery_saver")
+                        put("value", "on")
+                    })
+                    put("spoken_response", "Battery is low. I've enabled power saving mode.")
+                }.toString(),
+                label = "Low Battery Power Save"
+            )
 
-        // WiFi disconnect notification
-        memoryStore.addRoutine(
-            triggerType = "event",
-            triggerValue = "wifi_disconnected",
-            actionJson = JSONObject().apply {
-                put("action_type", "NOTIFICATION_ACTION")
-                put("parameters", JSONObject().apply {
-                    put("action", "notify")
-                    put("message", "WiFi disconnected")
-                })
-                put("spoken_response", "WiFi has disconnected.")
-            }.toString(),
-            label = "WiFi Disconnect Alert"
-        )
+            // WiFi disconnect notification
+            memoryStore.addRoutine(
+                triggerType = "event",
+                triggerValue = "wifi_disconnected",
+                actionJson = JSONObject().apply {
+                    put("action_type", "NOTIFICATION_ACTION")
+                    put("parameters", JSONObject().apply {
+                        put("action", "notify")
+                        put("message", "WiFi disconnected")
+                    })
+                    put("spoken_response", "WiFi has disconnected.")
+                }.toString(),
+                label = "WiFi Disconnect Alert"
+            )
 
-        // Schedule the time-based alarm
-        scheduleTimeCheckAlarm()
+            // Schedule the time-based alarm
+            scheduleTimeCheckAlarm()
+        }
     }
 
     private fun scheduleTimeCheckAlarm() {
@@ -268,9 +276,9 @@ class RoutineEngine(
         return memoryStore.addRoutine(triggerType, triggerValue, actionJson, label)
     }
 
-    fun getActiveRoutines() = memoryStore.routines.getEnabled()
+    suspend fun getActiveRoutines() = memoryStore.routines.getEnabled()
 
-    fun disableRoutine(routineId: Long) {
+    suspend fun disableRoutine(routineId: Long) {
         val routine = memoryStore.routines.getEnabled().find { it.id == routineId }
         if (routine != null) {
             memoryStore.routines.update(routine.copy(enabled = false))

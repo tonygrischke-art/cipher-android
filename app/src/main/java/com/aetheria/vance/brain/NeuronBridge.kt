@@ -31,33 +31,42 @@ class NeuronBridge {
         }
 
         fun isLoaded(): Boolean = sLoaded
+
+        /**
+         * Check if NPU hardware is available (wrapper for native method).
+         */
+        fun isAvailable(): Boolean = nativeIsAvailable()
+
+        /**
+         * Initialize NPU session with model.
+         * @param modelPath Absolute path to .tflite model file
+         * @param cacheDir  Cache directory for delegate (can be app cache dir)
+         * @return Opaque session handle (0 = failure)
+         */
+        @JvmStatic
+        external fun nativeInit(modelPath: String, cacheDir: String): Long
+
+        /**
+         * Run inference on initialized session.
+         * @param handle Session handle from nativeInit
+         * @param prompt Input prompt string
+         * @return Model output as string, or error message
+         */
+        @JvmStatic
+        external fun nativeInfer(handle: Long, prompt: String): String
+
+        /**
+         * Clean up session resources.
+         * @param handle Session handle from nativeInit
+         */
+        @JvmStatic
+        external fun nativeClose(handle: Long)
+
+        /**
+         * Check if NPU hardware is available (adapter loads, devices found).
+         * This does NOT create a full session - just probes the adapter.
+         */
+        @JvmStatic
+        external fun nativeIsAvailable(): Boolean
     }
-
-    /**
-     * Initialize NPU session with model.
-     * @param modelPath Absolute path to .tflite model file
-     * @param cacheDir  Cache directory for delegate (can be app cache dir)
-     * @return Opaque session handle (0 = failure)
-     */
-    external fun nativeInit(modelPath: String, cacheDir: String): Long
-
-    /**
-     * Run inference on initialized session.
-     * @param handle Session handle from nativeInit
-     * @param prompt Input prompt string
-     * @return Model output as string, or error message
-     */
-    external fun nativeInfer(handle: Long, prompt: String): String
-
-    /**
-     * Clean up session resources.
-     * @param handle Session handle from nativeInit
-     */
-    external fun nativeClose(handle: Long)
-
-    /**
-     * Check if NPU hardware is available (adapter loads, devices found).
-     * This does NOT create a full session - just probes the adapter.
-     */
-    external fun nativeIsAvailable(): Boolean
 }
