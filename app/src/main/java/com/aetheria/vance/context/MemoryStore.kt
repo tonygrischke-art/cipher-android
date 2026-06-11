@@ -319,6 +319,34 @@ abstract class CipherDatabase : RoomDatabase() {
     abstract fun embeddingDao(): MemoryEmbeddingDao
     abstract fun memoryDao(): MemoryDao
     abstract fun loraCheckpointDao(): LoraCheckpointDao
+
+    companion object {
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS memory (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        prompt TEXT NOT NULL,
+                        response TEXT NOT NULL,
+                        reinforcementScore INTEGER NOT NULL DEFAULT 0,
+                        source TEXT NOT NULL DEFAULT 'user',
+                        timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+                        sessionId TEXT NOT NULL DEFAULT 'default'
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_memory_reinforcement_score ON memory(reinforcementScore)")
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS lora_checkpoints (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        filename TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
+                        validationLoss REAL NOT NULL,
+                        isActive INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+    }
 }
 
 // ── MemoryStore — high-level API ─────────────────────────────────
@@ -330,6 +358,7 @@ class MemoryStore(context: Context) {
         CipherDatabase::class.java,
         "cipher_memory.db"
     )
+        .addMigrations(CipherDatabase.MIGRATION_3_4)
         .fallbackToDestructiveMigration()
         .build()
 
