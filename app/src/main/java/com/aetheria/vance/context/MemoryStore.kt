@@ -176,8 +176,8 @@ data class MemoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val prompt: String,
     val response: String,
-    val reinforcementScore: Int = 0,
-    val source: String = "user",  // "user" | "web" | "curriculum"
+    @ColumnInfo(name = "reinforcement_score") val reinforcementScore: Int = 0,
+    @ColumnInfo(name = "source") val source: String = "user",  // "user" | "web" | "curriculum"
     val timestamp: Long = System.currentTimeMillis(),
     val sessionId: String = "default"
 )
@@ -211,7 +211,7 @@ data class LoraCheckpointEntity(
     val filename: String,
     val timestamp: Long = System.currentTimeMillis(),
     val validationLoss: Double,
-    val isActive: Boolean = false
+    @ColumnInfo(name = "is_active") val isActive: Boolean = false
 )
 
 @Dao
@@ -328,20 +328,20 @@ abstract class CipherDatabase : RoomDatabase() {
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         prompt TEXT NOT NULL,
                         response TEXT NOT NULL,
-                        reinforcementScore INTEGER NOT NULL DEFAULT 0,
+                        reinforcement_score INTEGER NOT NULL DEFAULT 0,
                         source TEXT NOT NULL DEFAULT 'user',
                         timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
                         sessionId TEXT NOT NULL DEFAULT 'default'
                     )
                 """.trimIndent())
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_memory_reinforcement_score ON memory(reinforcementScore)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_memory_reinforcement_score ON memory(reinforcement_score)")
                 database.execSQL("""
                     CREATE TABLE IF NOT EXISTS lora_checkpoints (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         filename TEXT NOT NULL,
                         timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000),
                         validationLoss REAL NOT NULL,
-                        isActive INTEGER NOT NULL DEFAULT 0
+                        is_active INTEGER NOT NULL DEFAULT 0
                     )
                 """.trimIndent())
             }
