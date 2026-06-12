@@ -34,6 +34,9 @@
     <!-- Shizuku -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- NPU / NNAPI -->
+    <uses-permission android:name="android.permission.BIND_NNAPI_PROVIDER" />
+
     <!-- Hardware features -->
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
