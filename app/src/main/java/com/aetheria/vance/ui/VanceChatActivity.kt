@@ -260,8 +260,10 @@ fun CipherChatScreen(feedbackMode: Boolean = false) {
 
         HorizontalDivider()
 
+        val showFeedback by viewModel.showFeedbackBar.collectAsState()
+
         // Feedback bar (shown when opened via orb long-press)
-        if (viewModel.showFeedbackBar) {
+        if (showFeedback) {
             FeedbackBar(
                 onThumbsUp = { viewModel.submitFeedback(1) },
                 onThumbsDown = { viewModel.submitFeedback(-1) },
