@@ -162,15 +162,18 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeIsAvailable(
         return JNI_FALSE;
     }
 
-    if (!pfn_TfLiteNnapiDelegateCreate || !pfn_TfLiteNnapiDelegateOptionsDefault) {
+    if (!pfn_TfLiteNnapiDelegateCreate) {
         LOGE("nativeIsAvailable: NNAPI delegate symbols missing");
         return JNI_FALSE;
     }
 
-    // Try creating a test delegate with default options
+    // Try creating a test delegate with default options.
+    // Skip TfLiteNnapiDelegateOptionsDefault — it crashes on this device's
+    // TFLite build (SEGV_ACCERR inside the function). Zero-init is sufficient
+    // for default options: all fields = 0 = default behavior.
     TfLiteNnapiDelegateOptions opts;
     memset(&opts, 0, sizeof(opts));
-    pfn_TfLiteNnapiDelegateOptionsDefault(&opts);
+    // Do NOT call pfn_TfLiteNnapiDelegateOptionsDefault(&opts) — crashes on MT6878
 
     TfLiteDelegate* test_del = pfn_TfLiteNnapiDelegateCreate(&opts);
     if (test_del) {
@@ -180,15 +183,6 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeIsAvailable(
     }
 
     LOGW("nativeIsAvailable: NNAPI delegate creation failed");
-
-    test_del = pfn_TfLiteNnapiDelegateCreate(&opts);
-    if (test_del) {
-        LOGI("nativeIsAvailable: NNAPI delegate created (any accelerator)");
-        pfn_TfLiteNnapiDelegateDelete(test_del);
-        return JNI_TRUE;
-    }
-
-    LOGW("nativeIsAvailable: NNAPI delegate creation failed — NNAPI may not be available");
     return JNI_FALSE;
 }
 
@@ -232,10 +226,11 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     }
 
     // Create and attach NNAPI delegate (default options — auto-detect accelerator)
-    if (pfn_TfLiteNnapiDelegateCreate && pfn_TfLiteNnapiDelegateOptionsDefault) {
+    if (pfn_TfLiteNnapiDelegateCreate) {
         TfLiteNnapiDelegateOptions nn_opts;
         memset(&nn_opts, 0, sizeof(nn_opts));
-        pfn_TfLiteNnapiDelegateOptionsDefault(&nn_opts);
+        // Skip TfLiteNnapiDelegateOptionsDefault — crashes on MT6878 TFLite build.
+        // Zero-init is sufficient: all fields = 0 = default behavior.
 
         g_session.nnapi_delegate = pfn_TfLiteNnapiDelegateCreate(&nn_opts);
         if (g_session.nnapi_delegate) {
