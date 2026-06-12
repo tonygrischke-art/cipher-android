@@ -66,12 +66,39 @@ static bool g_tflite_resolved = false;
 static bool resolve_tflite_symbols() {
     if (g_tflite_resolved) return true;
 
-    // Try loading TFLite from dedicated lib first, then RTLD_DEFAULT
-    void* h = dlopen("libtensorflowlite_jni.so", RTLD_NOW);
-    if (!h) h = dlopen("libtensorflowlite.so", RTLD_NOW);
-    if (!h) h = RTLD_DEFAULT;
+    // Try loading TFLite from multiple sources:
+    // 1. libtensorflowlite_jni.so (bundled by TFLite AAR dep)
+    // 2. libneuronusdk_adapter.mtk.so (already loaded in process)
+    // 3. RTLD_DEFAULT (any loaded library)
+    void* handles[] = {
+        dlopen("libtensorflowlite_jni.so", RTLD_NOW | RTLD_NOLOAD),
+        dlopen("libneuronusdk_adapter.mtk.so", RTLD_NOW | RTLD_NOLOAD),
+        RTLD_DEFAULT,
+        nullptr
+    };
 
-    LOGI("TFLite handle: %p", h);
+    void* h = nullptr;
+    const char* h_name = nullptr;
+    for (int i = 0; handles[i] != nullptr; i++) {
+        void* test = dlsym(handles[i], "TfLiteModelCreateFromFile");
+        if (test) {
+            h = handles[i];
+            h_name = (i == 0) ? "libtensorflowlite_jni.so" :
+                     (i == 1) ? "libneuronusdk_adapter.mtk.so" :
+                     "RTLD_DEFAULT";
+            break;
+        }
+    }
+
+    if (!h) {
+        // Last resort: try dlopen without NOLOAD
+        h = dlopen("libtensorflowlite_jni.so", RTLD_NOW);
+        if (!h) h = dlopen("libtensorflowlite.so", RTLD_NOW);
+        if (!h) h = RTLD_DEFAULT;
+        h_name = "dlopen_fallback";
+    }
+
+    LOGI("TFLite resolved from: %s (handle=%p)", h_name, h);
 
     auto R = [&](const char* sym, auto& fn) -> bool {
         void* p = dlsym(h, sym);

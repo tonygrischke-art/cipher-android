@@ -125,6 +125,10 @@ dependencies {
     implementation("com.google.mediapipe:tasks-genai:0.10.14")
     implementation("com.google.mediapipe:tasks-core:0.10.14")
 
+    // TensorFlow Lite — C API for NPU inference via standard NNAPI delegate
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
+
     // Shizuku
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
