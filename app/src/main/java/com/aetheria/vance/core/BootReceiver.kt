@@ -14,9 +14,7 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         Log.i(TAG, "onReceive action=${intent?.action}")
-        if (intent?.action == Intent.ACTION_BOOT_COMPLETED ||
-            intent?.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-
+        if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
             // Wait a moment for Application.onCreate model copy to start
             Thread {
                 try {
@@ -27,6 +25,10 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }.start()
         }
+        // Note: ACTION_MY_PACKAGE_REPLACED intentionally NOT handled here.
+        // The TfliteLlmEngine smoke test crashes when run from the replace
+        // callback because the model isn't ready yet. VanceCoreService handles
+        // its own init in onCreate().
     }
 
     private fun runTfliteSmokeTest(context: Context) {
@@ -39,19 +41,23 @@ class BootReceiver : BroadcastReceiver() {
                     Log.i(TAG, "Smoke test: copying mobilenet_test.tflite from source")
                     srcFile.copyTo(testFile, overwrite = true)
                 } else {
-                    Log.e(TAG, "Smoke test: mobilenet_test.tflite not found anywhere")
+                    Log.e(TAG, "Smoke test: mobilenet_test.tflite not found anywhere — skipping")
                     return
                 }
             }
-            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize(${testFile.name}, ${testFile.length() / 1024 / 1024}MB)")
+            Log.i(TAG, "Smoke test: loading TfliteLlmEngine with ${testFile.name} (${testFile.length() / 1024 / 1024}MB)")
             val engine = com.aetheria.vance.brain.TfliteLlmEngine(context)
             kotlinx.coroutines.runBlocking {
                 engine.initialize(testFile.absolutePath)
             }
-            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize() done")
+            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize() done successfully")
             engine.release()
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Smoke test: native library not available: ${e.message}")
         } catch (e: Exception) {
             Log.e(TAG, "Smoke test: TfliteLlmEngine failed: ${e.message}")
+        } catch (e: Throwable) {
+            Log.e(TAG, "Smoke test: unexpected error: ${e.message}")
         }
     }
 

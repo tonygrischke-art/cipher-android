@@ -162,7 +162,7 @@ class VanceCoreService : Service() {
         voicePipeline.initialize()
 
     // Initialize NPU engine with model from /data/local/tmp/cipher_models
-    val modelFile = java.io.File("/data/local/tmp/cipher_models/cipher_qwen.task")
+    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05_clean.task")
     if (modelFile.exists()) {
         serviceScope.launch(Dispatchers.IO) {
             npuEngine.setupInferenceEngine()

@@ -13,7 +13,7 @@ class NpuEngine(private val context: Context) {
         private set
 
     fun setupInferenceEngine(): Boolean {
-        val modelFile = File("/data/local/tmp/cipher_models/cipher_qwen.task")
+        val modelFile = File("/data/local/tmp/cipher_models/qwen05_clean.task")
         if (!modelFile.exists()) {
             Log.e(TAG, "Abort: model missing at ${modelFile.absolutePath}")
             return false
