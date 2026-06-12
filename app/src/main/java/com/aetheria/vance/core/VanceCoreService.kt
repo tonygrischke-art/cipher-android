@@ -23,6 +23,7 @@ import com.aetheria.vance.brain.SkillLearner
 import com.aetheria.vance.brain.SkillMatcher
 import com.aetheria.vance.context.ContextEngine
 import com.aetheria.vance.brain.NpuEngine
+import com.aetheria.vance.brain.TfliteLlmEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.notifications.VanceNotificationListener
 import com.aetheria.vance.ui.FloatingOrbService
