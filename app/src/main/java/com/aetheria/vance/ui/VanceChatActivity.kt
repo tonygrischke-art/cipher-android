@@ -60,6 +60,9 @@ class VanceChatActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val feedbackMode = intent.getBooleanExtra("feedback_mode", false)
+
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             CipherTheme {
@@ -67,7 +70,7 @@ class VanceChatActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    CipherChatScreen()
+                    CipherChatScreen(feedbackMode = feedbackMode)
                 }
             }
         }
@@ -95,6 +98,9 @@ class CipherChatViewModel @Inject constructor(
 
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
+
+    private val _showFeedbackBar = MutableStateFlow(false)
+    val showFeedbackBar: StateFlow<Boolean> = _showFeedbackBar.asStateFlow()
 
     init {
         loadHistory()
@@ -168,10 +174,32 @@ class CipherChatViewModel @Inject constructor(
             _messages.value = emptyList()
         }
     }
+
+    fun submitFeedback(score: Int) {
+        // Send feedback to BrainRouter via service
+        try {
+            val intent = Intent(appContext, VanceCoreService::class.java).apply {
+                action = "com.aetheria.vance.SUBMIT_FEEDBACK"
+                putExtra("feedback_score", score)
+            }
+            appContext.startService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to submit feedback", e)
+        }
+        _showFeedbackBar.value = false
+    }
+
+    fun dismissFeedbackBar() {
+        _showFeedbackBar.value = false
+    }
+
+    fun showFeedbackBar() {
+        _showFeedbackBar.value = true
+    }
 }
 
 @Composable
-fun CipherChatScreen() {
+fun CipherChatScreen(feedbackMode: Boolean = false) {
     val viewModel: CipherChatViewModel = hiltViewModel()
     val messages by viewModel.messages.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
@@ -180,6 +208,13 @@ fun CipherChatScreen() {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
+
+    // Show feedback bar when opened via orb long-press
+    LaunchedEffect(feedbackMode) {
+        if (feedbackMode) {
+            viewModel.showFeedbackBar()
+        }
+    }
 
     // Auto-scroll to bottom
     LaunchedEffect(messages.size) {
@@ -224,6 +259,15 @@ fun CipherChatScreen() {
         }
 
         HorizontalDivider()
+
+        // Feedback bar (shown when opened via orb long-press)
+        if (viewModel.showFeedbackBar) {
+            FeedbackBar(
+                onThumbsUp = { viewModel.submitFeedback(1) },
+                onThumbsDown = { viewModel.submitFeedback(-1) },
+                onDismiss = { viewModel.dismissFeedbackBar() }
+            )
+        }
 
         // Message history
         LazyColumn(
@@ -309,6 +353,56 @@ fun CipherChatScreen() {
                 }
             ) {
                 Icon(Icons.Default.Send, contentDescription = "Send")
+            }
+        }
+    }
+}
+
+@Composable
+fun FeedbackBar(
+    onThumbsUp: () -> Unit,
+    onThumbsDown: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Rate the last response:",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                IconButton(onClick = onThumbsUp) {
+                    Icon(
+                        Icons.Default.ThumbUp,
+                        contentDescription = "Good response",
+                        tint = Color(0xFF4CAF50)
+                    )
+                }
+                IconButton(onClick = onThumbsDown) {
+                    Icon(
+                        Icons.Default.ThumbDown,
+                        contentDescription = "Bad response",
+                        tint = Color(0xFFF44336)
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
         }
     }

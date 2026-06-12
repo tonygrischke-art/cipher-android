@@ -47,6 +47,7 @@ class VanceCoreService : Service() {
 
         const val ACTION_WAKE_WORD_DETECTED = "ACTION_WAKE_WORD_DETECTED"
         const val ACTION_PROCESS_TRANSCRIPT = "ACTION_PROCESS_TRANSCRIPT"
+        const val ACTION_SUBMIT_FEEDBACK = "com.aetheria.vance.SUBMIT_FEEDBACK"
         const val ACTION_NOTIFICATION_RECEIVED = "com.aetheria.vance.NOTIFICATION_RECEIVED"
         const val ACTION_FOREGROUND_APP_CHANGED = "com.aetheria.vance.FOREGROUND_APP_CHANGED"
     }
@@ -97,6 +98,10 @@ class VanceCoreService : Service() {
             }
             ACTION_NOTIFICATION_RECEIVED -> handleNotification(intent)
             ACTION_FOREGROUND_APP_CHANGED -> handleAppChange(intent)
+            ACTION_SUBMIT_FEEDBACK -> {
+                val score = intent.getIntExtra("feedback_score", 0)
+                serviceScope.launch { brainRouter.recordFeedback(score) }
+            }
         }
         return START_STICKY
     }
