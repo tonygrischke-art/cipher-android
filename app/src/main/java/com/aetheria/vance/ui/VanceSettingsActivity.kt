@@ -139,6 +139,7 @@ class CipherSettingsViewModel @Inject constructor(
 fun CipherSettingsScreen(onBack: () -> Unit = {}) {
     val viewModel: CipherSettingsViewModel = hiltViewModel()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showClearConfirmDialog by remember { mutableStateOf(false) }
     var groqKeyVisible by remember { mutableStateOf(false) }
 
@@ -378,7 +379,7 @@ fun CipherSettingsScreen(onBack: () -> Unit = {}) {
 
             OutlinedButton(
                 onClick = {
-                    viewModelScope.launch {
+                    scope.launch {
                         val file = viewModel.exportConversationHistory()
                         if (file != null) {
                             Toast.makeText(context, "Exported to ${file.name}", Toast.LENGTH_LONG).show()
