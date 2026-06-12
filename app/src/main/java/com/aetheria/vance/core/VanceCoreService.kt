@@ -58,8 +58,8 @@ class VanceCoreService : Service() {
     @Inject lateinit var voicePipeline: VoicePipeline
     @Inject lateinit var actionExecutor: ActionExecutor
     @Inject lateinit var memoryStore: MemoryStore
-    private lateinit var npuEngine: NpuEngine
-    private lateinit var tfliteLlmEngine: TfliteLlmEngine
+    @Inject lateinit var npuEngine: NpuEngine
+    @Inject lateinit var tfliteLlmEngine: TfliteLlmEngine
 
     private lateinit var skillMatcher: SkillMatcher
     private lateinit var skillLearner: SkillLearner
