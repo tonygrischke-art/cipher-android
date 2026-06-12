@@ -26,7 +26,9 @@ class NpuEngine(private val context: Context) {
 
     init {
         // Load native library on construction
+        Log.i(TAG, "NpuEngine constructing...")
         NeuronBridge.loadLibrary()
+        Log.i(TAG, "NpuEngine loadLibrary done: loaded=${NeuronBridge.isLoaded()}")
     }
 
     fun init(modelPath: String) {
