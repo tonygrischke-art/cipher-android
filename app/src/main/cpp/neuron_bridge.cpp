@@ -141,16 +141,20 @@ static void* loadAdapter() {
     static void* h = nullptr;
     if (h) return h;
     const char* paths[] = {
-        "/vendor/lib64/libneuron_adapter_mgvi.so",
-        "/system/lib64/libneuron_adapter_mgvi.so",
-        "/vendor/lib/libneuron_adapter_mgvi.so",
-        "libneuron_adapter_mgvi.so"
+        "/vendor/lib64/libneuron_runtime.so",
+        "/system/lib64/libneuron_runtime.so",
+        "/vendor/lib/libneuron_runtime.so",
+        "libneuron_runtime.so",
+        "/vendor/lib64/libneuronusdk_adapter.mtk.so",
+        "/system/lib64/libneuronusdk_adapter.mtk.so",
+        "/vendor/lib/libneuronusdk_adapter.mtk.so",
+        "libneuronusdk_adapter.mtk.so"
     };
     for (auto p : paths) {
         h = dlopen(p, RTLD_NOW);
         if (h) { LOGI("[APU] Loaded adapter from: %s", p); return h; }
     }
-    LOGE("[APU] Cannot load libneuron_adapter_mgvi.so: %s", dlerror());
+    LOGE("[APU] Cannot load neuron adapter: %s", dlerror());
     return nullptr;
 }
 
