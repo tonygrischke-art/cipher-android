@@ -97,23 +97,28 @@ static std::mutex g_mutex;
 
 // ── Step 2: dlopen fallback chain with logging ────────────────────────────
 static void* try_load_neuron() {
+    // Try with full paths first (matches what nativeloader uses), then bare name
     const char* libs[] = {
-        "libneuron_runtime.so",           // Moto Edge MT6878 (primary)
-        "libneuronusdk_adapter.mtk.so",   // MTK extended (fallback 1)
-        "libneuron_runtime.7.so",         // versioned fallback
-        "libneuron_adapter.mgvi.so",      // legacy (probably absent)
+        "/vendor/lib64/libneuron_runtime.so",  // Moto Edge MT6878 (primary, confirmed via ls)
+        "/vendor/lib64/mt6878/libneuron_runtime.so",  // Direct path (follows symlink)
+        "/system/lib64/libneuron_runtime.so",
+        "libneuron_runtime.so",
+        "/vendor/lib64/libneuronusdk_adapter.mtk.so",
+        "/system/lib64/libneuronusdk_adapter.mtk.so",
+        "libneuronusdk_adapter.mtk.so",
+        "libneuron_runtime.7.so",
+        "libneuron_adapter_mgvi.so",
         nullptr
     };
 
     for (int i = 0; libs[i] != nullptr; i++) {
-        void* handle = dlopen(libs[i], RTLD_LAZY | RTLD_LOCAL);
+        void* handle = dlopen(libs[i], RTLD_NOW);
         if (handle) {
-            LOGI("dlopen SUCCESS: %s", libs[i]);
+            LOGI("dlopen SUCCESS: %s (handle=%p)", libs[i], handle);
             g_loaded_lib = libs[i];
             return handle;
-        } else {
-            LOGW("dlopen FAILED: %s — %s", libs[i], dlerror());
         }
+        LOGW("dlopen FAILED: %s — %s", libs[i], dlerror() ? dlerror() : "unknown");
     }
 
     LOGE("All dlopen attempts failed — NPU unavailable");
@@ -305,20 +310,11 @@ static void log_available_symbols() {
 // JNI Methods
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Step 2: JNI_OnLoad with try_load_neuron + symbol probe
+// Step 2: JNI_OnLoad — minimal, no symbol resolution here
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad called");
-    try {
-        g_neuron_handle = try_load_neuron();
-        LOGI("NPU handle: %s (lib: %s)", g_neuron_handle ? "VALID" : "NULL", g_loaded_lib ? g_loaded_lib : "none");
-
-        if (g_neuron_handle) {
-            log_available_symbols();
-        }
-    } catch (...) {
-        LOGE("JNI_OnLoad: exception caught");
-    }
-
+    g_neuron_handle = try_load_neuron();
+    LOGI("NPU handle: %s (lib: %s)", g_neuron_handle ? "VALID" : "NULL", g_loaded_lib ? g_loaded_lib : "none");
     return JNI_VERSION_1_6;
 }
 
