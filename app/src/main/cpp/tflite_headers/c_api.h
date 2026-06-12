@@ -71,6 +71,9 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOpti
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
     TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
 
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
+    TfLiteInterpreterOptions* options, int num_threads);
+
 // ── Interpreter ──
 TFL_CAPI_EXPORT extern TfLiteInterpreter* TfLiteInterpreterCreate(
     TfLiteModel* model, const TfLiteInterpreterOptions* optional_options);

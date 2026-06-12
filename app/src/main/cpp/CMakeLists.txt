@@ -67,3 +67,33 @@ target_link_libraries(npu_loader
     log
     dl
 )
+
+# ── WakeNPUEngine — TFLite wake word classifier via NNAPI ──────────────────
+add_library(
+    wake_npu_engine
+    SHARED
+    wake_npu_engine.cpp
+)
+
+target_include_directories(wake_npu_engine PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${TFLITE_HEADERS_DIR}
+)
+
+target_link_libraries(wake_npu_engine
+    ${log-lib}
+    dl
+    android
+)
+
+target_compile_options(wake_npu_engine PRIVATE
+    -O3
+    -ffunction-sections
+    -fdata-sections
+    -fvisibility=hidden
+)
+
+target_link_options(wake_npu_engine PRIVATE
+    -Wl,--gc-sections
+    -Wl,-s
+)
