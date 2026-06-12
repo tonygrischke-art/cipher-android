@@ -1,20 +1,17 @@
 // ============================================================================
-// NeuronBridge — Phase 2: TFLite C API + NNAPI SL Shim (v2)
+// NeuronBridge — Phase 2: TFLite C API + NNAPI SL Shim (v3)
 // File: app/src/main/cpp/neuron_bridge.cpp
-// Target: libneuron_adapter_mgvi.so on MT6878 (Dimensity 7300/8200)
+// Target: libneuron_runtime.so on MT6878 (Dimensity 7300)
 //
-// Both TFLite C API and NNAPI adapter are loaded via dlopen/dlsym at runtime.
-// No build-time linking against TFLite native library needed.
-//
-// v2 fix: Use dlsym to load TFLite functions from libtensorflowlite_jni.so
-// instead of calling them directly (which caused linker errors in CI).
+// v3: dlopen fallback chain with full dlsym logging + symbol probe
+// Primary: libneuron_runtime.so (confirmed on Moto Edge MT6878)
+// Fallback: libneuronusdk_adapter.mtk.so, libneuron_runtime.7.so
 // ============================================================================
 
 #include <jni.h>
 #include <dlfcn.h>
 #include <android/log.h>
 #include <string>
-#include <vector>
 #include <mutex>
 #include <cstring>
 
@@ -24,10 +21,14 @@
 #include "tflite_headers/nnapi_delegate_c_api.h"
 #include "tflite_headers/NeuralNetworksSupportLibrary.h"
 
-#define LOG_TAG "APU"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOG_TAG "NeuronBridge"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+// ── Global neuron library handle (loaded once in JNI_OnLoad) ──────────────
+static void* g_neuron_handle = nullptr;
+static const char* g_loaded_lib = nullptr;
 
 // ── TFLite C API function pointers (loaded via dlsym) ────────────────────
 static TfLiteModel* (*pfn_TfLiteModelCreateFromFile)(const char*) = nullptr;
@@ -91,104 +92,123 @@ struct NpuSession {
     std::string model_path;
 };
 
+static NpuSession g_session;
 static std::mutex g_mutex;
 
-// ── Resolve TFLite C API via dlsym ───────────────────────────────────────
-static bool loadTFLite() {
-    static bool loaded = false;
-    static bool ok = false;
-    if (loaded) return ok;
-    loaded = true;
-
-    void* h = dlopen("libtensorflowlite_jni.so", RTLD_NOW);
-    if (!h) h = dlopen("libtensorflowlite.so", RTLD_NOW);
-    if (!h) h = RTLD_DEFAULT;
-    LOGI("[APU] TFLite handle: %p", h);
-
-    auto R = [&](const char* sym, auto& fn) -> bool {
-        void* p = dlsym(h, sym);
-        if (!p) { LOGE("[APU] dlsym(%s): %s", sym, dlerror()); return false; }
-        fn = reinterpret_cast<decltype(fn)>(p);
-        return true;
+// ── Step 2: dlopen fallback chain with logging ────────────────────────────
+static void* try_load_neuron() {
+    const char* libs[] = {
+        "libneuron_runtime.so",           // Moto Edge MT6878 (primary)
+        "libneuronusdk_adapter.mtk.so",   // MTK extended (fallback 1)
+        "libneuron_runtime.7.so",         // versioned fallback
+        "libneuron_adapter.mgvi.so",      // legacy (probably absent)
+        nullptr
     };
 
-    ok = true;
-    ok &= R("TfLiteModelCreateFromFile", pfn_TfLiteModelCreateFromFile);
-    ok &= R("TfLiteModelDelete", pfn_TfLiteModelDelete);
-    ok &= R("TfLiteInterpreterOptionsCreate", pfn_TfLiteInterpreterOptionsCreate);
-    ok &= R("TfLiteInterpreterOptionsDelete", pfn_TfLiteInterpreterOptionsDelete);
-    ok &= R("TfLiteInterpreterOptionsAddDelegate", pfn_TfLiteInterpreterOptionsAddDelegate);
-    ok &= R("TfLiteInterpreterCreate", pfn_TfLiteInterpreterCreate);
-    ok &= R("TfLiteInterpreterDelete", pfn_TfLiteInterpreterDelete);
-    ok &= R("TfLiteInterpreterAllocateTensors", pfn_TfLiteInterpreterAllocateTensors);
-    ok &= R("TfLiteInterpreterGetInputTensorCount", pfn_TfLiteInterpreterGetInputTensorCount);
-    ok &= R("TfLiteInterpreterGetOutputTensorCount", pfn_TfLiteInterpreterGetOutputTensorCount);
-    ok &= R("TfLiteInterpreterGetInputTensor", pfn_TfLiteInterpreterGetInputTensor);
-    ok &= R("TfLiteInterpreterGetOutputTensor", pfn_TfLiteInterpreterGetOutputTensor);
-    ok &= R("TfLiteInterpreterInvoke", pfn_TfLiteInterpreterInvoke);
-    ok &= R("TfLiteTensorType", pfn_TfLiteTensorType);
-    ok &= R("TfLiteTensorByteSize", pfn_TfLiteTensorByteSize);
-    ok &= R("TfLiteTensorData", pfn_TfLiteTensorData);
-    ok &= R("TfLiteNnapiDelegateCreate", pfn_TfLiteNnapiDelegateCreate);
-    ok &= R("TfLiteNnapiDelegateDelete", pfn_TfLiteNnapiDelegateDelete);
-
-    if (ok) LOGI("[APU] All TFLite C API symbols resolved ✓");
-    return ok;
-}
-
-// ── Load NNAPI adapter ───────────────────────────────────────────────────
-static void* loadAdapter() {
-    static void* h = nullptr;
-    if (h) return h;
-    const char* paths[] = {
-        "/vendor/lib64/libneuron_runtime.so",
-        "/system/lib64/libneuron_runtime.so",
-        "/vendor/lib/libneuron_runtime.so",
-        "libneuron_runtime.so",
-        "/vendor/lib64/libneuronusdk_adapter.mtk.so",
-        "/system/lib64/libneuronusdk_adapter.mtk.so",
-        "/vendor/lib/libneuronusdk_adapter.mtk.so",
-        "libneuronusdk_adapter.mtk.so"
-    };
-    for (auto p : paths) {
-        h = dlopen(p, RTLD_NOW);
-        if (h) { LOGI("[APU] Loaded adapter from: %s", p); return h; }
+    for (int i = 0; libs[i] != nullptr; i++) {
+        void* handle = dlopen(libs[i], RTLD_LAZY | RTLD_LOCAL);
+        if (handle) {
+            LOGI("dlopen SUCCESS: %s", libs[i]);
+            g_loaded_lib = libs[i];
+            return handle;
+        } else {
+            LOGW("dlopen FAILED: %s — %s", libs[i], dlerror());
+        }
     }
-    LOGE("[APU] Cannot load neuron adapter: %s", dlerror());
+
+    LOGE("All dlopen attempts failed — NPU unavailable");
     return nullptr;
 }
 
-static bool resolveAdapter(void* h) {
+// ── Step 3: dlsym with logging ───────────────────────────────────────────
+static bool resolve_tflite_symbols() {
+    // Try loading TFLite from dedicated lib first, then RTLD_DEFAULT
+    void* h = dlopen("libtensorflowlite_jni.so", RTLD_NOW);
+    if (!h) h = dlopen("libtensorflowlite.so", RTLD_NOW);
+    if (!h) h = RTLD_DEFAULT;
+
+    LOGI("TFLite handle: %p", h);
+
     auto R = [&](const char* sym, auto& fn) -> bool {
         void* p = dlsym(h, sym);
-        if (!p) { LOGE("[APU] dlsym(%s): %s", sym, dlerror()); return false; }
-        fn = reinterpret_cast<decltype(fn)>(p);
-        return true;
+        if (p) {
+            LOGI("  dlsym OK: %s", sym);
+            fn = reinterpret_cast<decltype(fn)>(p);
+            return true;
+        } else {
+            LOGE("  dlsym FAILED: %s — %s", sym, dlerror());
+            return false;
+        }
     };
+
     bool ok = true;
-    ok &= R("ANeuralNetworksMemory_createFromFd", g_adapter.Memory_createFromFd);
+    ok &= R("TfLiteModelCreateFromFile",         pfn_TfLiteModelCreateFromFile);
+    ok &= R("TfLiteModelDelete",                pfn_TfLiteModelDelete);
+    ok &= R("TfLiteInterpreterOptionsCreate",   pfn_TfLiteInterpreterOptionsCreate);
+    ok &= R("TfLiteInterpreterOptionsDelete",   pfn_TfLiteInterpreterOptionsDelete);
+    ok &= R("TfLiteInterpreterOptionsAddDelegate", pfn_TfLiteInterpreterOptionsAddDelegate);
+    ok &= R("TfLiteInterpreterCreate",          pfn_TfLiteInterpreterCreate);
+    ok &= R("TfLiteInterpreterDelete",          pfn_TfLiteInterpreterDelete);
+    ok &= R("TfLiteInterpreterAllocateTensors", pfn_TfLiteInterpreterAllocateTensors);
+    ok &= R("TfLiteInterpreterGetInputTensorCount",  pfn_TfLiteInterpreterGetInputTensorCount);
+    ok &= R("TfLiteInterpreterGetOutputTensorCount", pfn_TfLiteInterpreterGetOutputTensorCount);
+    ok &= R("TfLiteInterpreterGetInputTensor",  pfn_TfLiteInterpreterGetInputTensor);
+    ok &= R("TfLiteInterpreterGetOutputTensor", pfn_TfLiteInterpreterGetOutputTensor);
+    ok &= R("TfLiteInterpreterInvoke",          pfn_TfLiteInterpreterInvoke);
+    ok &= R("TfLiteTensorType",                 pfn_TfLiteTensorType);
+    ok &= R("TfLiteTensorByteSize",             pfn_TfLiteTensorByteSize);
+    ok &= R("TfLiteTensorData",                 pfn_TfLiteTensorData);
+    ok &= R("TfLiteNnapiDelegateCreate",        pfn_TfLiteNnapiDelegateCreate);
+    ok &= R("TfLiteNnapiDelegateDelete",        pfn_TfLiteNnapiDelegateDelete);
+
+    if (ok) LOGI("All TFLite C API symbols resolved");
+    return ok;
+}
+
+static bool resolve_neuron_symbols() {
+    if (!g_neuron_handle) {
+        LOGE("resolve_neuron_symbols: no g_neuron_handle");
+        return false;
+    }
+
+    auto R = [&](const char* sym, auto& fn) -> bool {
+        void* p = dlsym(g_neuron_handle, sym);
+        if (p) {
+            LOGI("  dlsym OK: %s", sym);
+            fn = reinterpret_cast<decltype(fn)>(p);
+            return true;
+        } else {
+            LOGE("  dlsym FAILED: %s — %s", sym, dlerror());
+            return false;
+        }
+    };
+
+    memset(&g_adapter, 0, sizeof(g_adapter));
+    bool ok = true;
+    ok &= R("ANeuralNetworksMemory_createFromFd",      g_adapter.Memory_createFromFd);
     ok &= R("ANeuralNetworksCompilation_createForDevices", g_adapter.Compilation_createForDevices);
-    ok &= R("ANeuralNetworksCompilation_finish", g_adapter.Compilation_finish);
-    ok &= R("ANeuralNetworksExecution_create", g_adapter.Execution_create);
-    ok &= R("ANeuralNetworksExecution_setInput", g_adapter.Execution_setInput);
-    ok &= R("ANeuralNetworksExecution_setOutput", g_adapter.Execution_setOutput);
-    ok &= R("ANeuralNetworksExecution_compute", g_adapter.Execution_compute);
-    ok &= R("ANeuralNetworksExecution_startCompute", g_adapter.Execution_startCompute);
-    ok &= R("ANeuralNetworksModel_create", g_adapter.Model_create);
-    ok &= R("ANeuralNetworksModel_addOperand", g_adapter.Model_addOperand);
-    ok &= R("ANeuralNetworksModel_setOperandValue", g_adapter.Model_setOperandValue);
+    ok &= R("ANeuralNetworksCompilation_finish",       g_adapter.Compilation_finish);
+    ok &= R("ANeuralNetworksExecution_create",          g_adapter.Execution_create);
+    ok &= R("ANeuralNetworksExecution_setInput",        g_adapter.Execution_setInput);
+    ok &= R("ANeuralNetworksExecution_setOutput",       g_adapter.Execution_setOutput);
+    ok &= R("ANeuralNetworksExecution_compute",         g_adapter.Execution_compute);
+    ok &= R("ANeuralNetworksExecution_startCompute",    g_adapter.Execution_startCompute);
+    ok &= R("ANeuralNetworksModel_create",              g_adapter.Model_create);
+    ok &= R("ANeuralNetworksModel_addOperand",          g_adapter.Model_addOperand);
+    ok &= R("ANeuralNetworksModel_setOperandValue",     g_adapter.Model_setOperandValue);
     ok &= R("ANeuralNetworksModel_identifyInputsAndOutputs", g_adapter.Model_identifyInputsAndOutputs);
-    ok &= R("ANeuralNetworksModel_finish", g_adapter.Model_finish);
-    ok &= R("ANeuralNetworksModel_free", g_adapter.Model_free);
-    ok &= R("ANeuralNetworksCompilation_free", g_adapter.Compilation_free);
-    ok &= R("ANeuralNetworksExecution_free", g_adapter.Execution_free);
-    ok &= R("ANeuralNetworksDevice_getName", g_adapter.Device_getName);
-    ok &= R("ANeuralNetworksDevice_getType", g_adapter.Device_getType);
-    ok &= R("ANeuralNetworksDevice_wait", g_adapter.Device_wait);
-    ok &= R("ANeuralNetworks_getDeviceCount", g_adapter.getDeviceCount);
-    ok &= R("ANeuralNetworks_getDevice", g_adapter.getDevice);
-    ok &= R("ANeuralNetworksEvent_wait", g_adapter.Event_wait);
-    ok &= R("ANeuralNetworksEvent_free", g_adapter.Event_free);
+    ok &= R("ANeuralNetworksModel_finish",              g_adapter.Model_finish);
+    ok &= R("ANeuralNetworksModel_free",                g_adapter.Model_free);
+    ok &= R("ANeuralNetworksCompilation_free",         g_adapter.Compilation_free);
+    ok &= R("ANeuralNetworksExecution_free",           g_adapter.Execution_free);
+    ok &= R("ANeuralNetworksDevice_getName",           g_adapter.Device_getName);
+    ok &= R("ANeuralNetworksDevice_getType",           g_adapter.Device_getType);
+    ok &= R("ANeuralNetworksDevice_wait",              g_adapter.Device_wait);
+    ok &= R("ANeuralNetworks_getDeviceCount",          g_adapter.getDeviceCount);
+    ok &= R("ANeuralNetworks_getDevice",               g_adapter.getDevice);
+    ok &= R("ANeuralNetworksEvent_wait",               g_adapter.Event_wait);
+    ok &= R("ANeuralNetworksEvent_free",               g_adapter.Event_free);
+
     return ok;
 }
 
@@ -206,7 +226,7 @@ static int w_Model_identifyInputsAndOutputs(ANeuralNetworksModel* m, uint32_t ic
 static int w_Model_finish(ANeuralNetworksModel* m) { return g_adapter.Model_finish(m); }
 static int w_Memory_createFromFd(size_t s, int p, int fd, size_t o, ANeuralNetworksMemory** m) { return g_adapter.Memory_createFromFd(s, p, fd, o, m); }
 static int w_Compilation_createForDevices(ANeuralNetworksModel* m, const ANeuralNetworksDevice* const* d, uint32_t n, ANeuralNetworksCompilation** c) {
-    LOGI("[APU] Compilation: model=%p numDevices=%u", (void*)m, n);
+    LOGI("Compilation: model=%p numDevices=%u", (void*)m, n);
     return g_adapter.Compilation_createForDevices(m, d, n, c);
 }
 static void w_Compilation_free(ANeuralNetworksCompilation* c) { g_adapter.Compilation_free(c); }
@@ -217,7 +237,7 @@ static int w_Execution_setInput(ANeuralNetworksExecution* e, int32_t i, const AN
 static int w_Execution_setOutput(ANeuralNetworksExecution* e, int32_t i, const ANeuralNetworksOperandType* t, void* b, size_t l) { return g_adapter.Execution_setOutput(e, i, t, b, l); }
 static int w_Execution_compute(ANeuralNetworksExecution* e) {
     int ret = g_adapter.Execution_compute(e);
-    LOGI("[APU] Execution_compute returned: %d", ret);
+    LOGI("Execution_compute returned: %d", ret);
     return ret;
 }
 static int w_Execution_startCompute(ANeuralNetworksExecution* e, ANeuralNetworksEvent** ev) { return g_adapter.Execution_startCompute(e, ev); }
@@ -252,66 +272,107 @@ static void populateNnApiSL() {
     g_nnapi_sl.ANeuralNetworksEvent_wait = w_Event_wait;
     g_nnapi_sl.ANeuralNetworksEvent_free = w_Event_free;
     g_nnapi_sl_populated = true;
-    LOGI("[APU] NnApiSL shim populated ✓ (FL5, %zu bytes)", sizeof(g_nnapi_sl));
+    LOGI("NnApiSL shim populated (FL5, %zu bytes)", sizeof(g_nnapi_sl));
+}
+
+// ── Step 4: Symbol discovery probe ────────────────────────────────────────
+static void log_available_symbols() {
+    if (!g_neuron_handle) return;
+
+    const char* probe_symbols[] = {
+        "NeuronCompilation_create",
+        "NeuronModel_create",
+        "NeuronExecution_create",
+        "ANeuralNetworksCompilation_create",
+        "ANeuralNetworksModel_create",
+        "NeuronRuntime_create",
+        "neuron_create",
+        "mtk_neuron_init",
+        "NeuroPilotTFLiteOptions_create",
+        "NeuroPilotTFLite_create",
+        nullptr
+    };
+
+    LOGI("--- Symbol probe ---");
+    for (int i = 0; probe_symbols[i] != nullptr; i++) {
+        void* sym = dlsym(g_neuron_handle, probe_symbols[i]);
+        LOGI("  %s: %s", probe_symbols[i], sym ? "FOUND" : "absent");
+    }
+    LOGI("--- End probe ---");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // JNI Methods
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Step 2: JNI_OnLoad with try_load_neuron + symbol probe
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-    LOGI("[APU] JNI_OnLoad called — libneuron_bridge.so loaded successfully");
+    LOGI("JNI_OnLoad called");
+    g_neuron_handle = try_load_neuron();
+    LOGI("NPU handle: %s (lib: %s)", g_neuron_handle ? "VALID" : "NULL", g_loaded_lib ? g_loaded_lib : "none");
+
+    if (g_neuron_handle) {
+        log_available_symbols();
+    }
+
     return JNI_VERSION_1_6;
 }
 
+// Step 5: nativeIsAvailable with logging
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeIsAvailable(
-    JNIEnv* /*env*/, jobject /*thiz*/)
+    JNIEnv* env, jobject thiz)
 {
-    // Quick probe: load TFLite symbols + adapter
-    if (!loadTFLite()) {
-        LOGE("[APU] nativeIsAvailable: loadTFLite failed");
+    LOGI("nativeIsAvailable called — handle: %s, lib: %s",
+         g_neuron_handle ? "VALID" : "NULL",
+         g_loaded_lib ? g_loaded_lib : "none");
+
+    if (!g_neuron_handle) {
+        LOGE("nativeIsAvailable: no neuron handle");
         return JNI_FALSE;
     }
-    void* adapter = loadAdapter();
-    if (!adapter) {
-        LOGE("[APU] nativeIsAvailable: loadAdapter failed");
+
+    // Resolve neuron symbols
+    if (!resolve_neuron_symbols()) {
+        LOGE("nativeIsAvailable: resolve_neuron_symbols failed");
         return JNI_FALSE;
     }
-    if (!resolveAdapter(adapter)) {
-        LOGE("[APU] nativeIsAvailable: resolveAdapter failed");
-        dlclose(adapter);
+
+    // Also check TFLite
+    if (!resolve_tflite_symbols()) {
+        LOGE("nativeIsAvailable: resolve_tflite_symbols failed");
         return JNI_FALSE;
     }
-    // Check if NPU device exists
+
+    // Check for NPU device
     uint32_t deviceCount = 0;
     if (g_adapter.getDeviceCount && g_adapter.getDeviceCount(&deviceCount) == 0) {
+        LOGI("Device count: %u", deviceCount);
         if (deviceCount > 0) {
-            // Check for NPU type device
             for (uint32_t i = 0; i < deviceCount; ++i) {
                 ANeuralNetworksDevice* device = nullptr;
                 if (g_adapter.getDevice(i, &device) == 0 && device) {
                     int32_t type = -1;
-                    if (g_adapter.Device_getType(device, &type) == 0) {
-                        // NPU device type constant from NNAPI (ANEURALNETWORKS_DEVICE_TYPE_NPU = 3)
-                    if (type == 3) {
-                            LOGI("[APU] nativeIsAvailable: NPU device found ✓");
-                            dlclose(adapter);
-                            return JNI_TRUE;
-                        }
+                    const char* name = nullptr;
+                    g_adapter.Device_getType(device, &type);
+                    g_adapter.Device_getName(device, &name);
+                    LOGI("  Device[%u]: name=%s type=%d", i, name ? name : "?", type);
+                    if (type == 3) {  // ANEURALNETWORKS_DEVICE_TYPE_NPU
+                        LOGI("nativeIsAvailable: NPU device found");
+                        return JNI_TRUE;
                     }
                 }
             }
         }
     }
-    dlclose(adapter);
-    LOGI("[APU] nativeIsAvailable: No NPU device found");
+
+    LOGI("nativeIsAvailable: No NPU device found (but symbols resolved)");
     return JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
-    JNIEnv* env, jobject /*thiz*/,
+    JNIEnv* env, jobject thiz,
     jstring modelPath, jstring cacheDir)
 {
     const char* mp = env->GetStringUTFChars(modelPath, nullptr);
@@ -321,105 +382,121 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
     env->ReleaseStringUTFChars(modelPath, mp);
     env->ReleaseStringUTFChars(cacheDir, cd);
 
+    LOGI("nativeInit: model=%s lib=%s", model_path.c_str(), g_loaded_lib ? g_loaded_lib : "none");
+
     std::lock_guard<std::mutex> lock(g_mutex);
 
-    NpuSession* s = new (std::nothrow) NpuSession();
-    if (!s) { LOGE("OOM"); return 0L; }
-    s->model_path = model_path;
-
-    // 1. Load TFLite
-    if (!loadTFLite()) { LOGE("[APU] loadTFLite failed"); delete s; return 0L; }
-
-    // 2. Load adapter
-    s->adapter_handle = loadAdapter();
-    if (!s->adapter_handle) { LOGE("[APU] loadAdapter failed"); delete s; return 0L; }
-
-    // 3. Resolve adapter symbols
-    if (!resolveAdapter(s->adapter_handle)) {
-        LOGE("[APU] resolveAdapter failed"); dlclose(s->adapter_handle); delete s; return 0L;
+    // Use the already-loaded handle from JNI_OnLoad
+    if (!g_neuron_handle) {
+        LOGE("nativeInit: no neuron handle — call nativeIsAvailable first");
+        return 0L;
     }
-    LOGI("[APU] Adapter symbols resolved ✓");
 
-    // 4. Populate SL shim (for potential future C++ API use)
+    g_session.adapter_handle = g_neuron_handle;
+
+    // Load TFLite if not already
+    if (!resolve_tflite_symbols()) {
+        LOGE("nativeInit: TFLite resolve failed");
+        return 0L;
+    }
+
+    // Populate SL shim
     populateNnApiSL();
 
-    // 5. Load model
-    s->model = pfn_TfLiteModelCreateFromFile(model_path.c_str());
-    if (!s->model) { LOGE("[APU] Model load failed: %s", model_path.c_str()); dlclose(s->adapter_handle); delete s; return 0L; }
-    LOGI("[APU] Model loaded: %s ✓", model_path.c_str());
+    // Load model
+    g_session.model = pfn_TfLiteModelCreateFromFile(model_path.c_str());
+    if (!g_session.model) {
+        LOGE("nativeInit: Model load failed: %s", model_path.c_str());
+        return 0L;
+    }
+    LOGI("Model loaded: %s", model_path.c_str());
 
-    // 6. Create options + attach NNAPI delegate
-    s->interp_opts = pfn_TfLiteInterpreterOptionsCreate();
-    if (!s->interp_opts) { LOGE("[APU] OptionsCreate failed"); pfn_TfLiteModelDelete(s->model); dlclose(s->adapter_handle); delete s; return 0L; }
+    // Create options + attach NNAPI delegate
+    g_session.interp_opts = pfn_TfLiteInterpreterOptionsCreate();
+    if (!g_session.interp_opts) {
+        LOGE("nativeInit: OptionsCreate failed");
+        pfn_TfLiteModelDelete(g_session.model);
+        g_session.model = nullptr;
+        return 0L;
+    }
 
-    // Use C API: create NNAPI delegate with default options, then add to interpreter options.
-    // The C API doesn't support SL handle injection — the delegate uses system NNAPI.
     if (pfn_TfLiteNnapiDelegateCreate) {
         TfLiteDelegate* del = pfn_TfLiteNnapiDelegateCreate(nullptr);
         if (del) {
-            pfn_TfLiteInterpreterOptionsAddDelegate(s->interp_opts, del);
-            LOGI("[APU] NnApiDelegate created and added ✓");
+            pfn_TfLiteInterpreterOptionsAddDelegate(g_session.interp_opts, del);
+            LOGI("NnApiDelegate created and added");
         } else {
-            LOGE("[APU] NnApiDelegateCreate returned null — CPU fallback");
+            LOGW("NnApiDelegateCreate returned null — CPU fallback");
         }
     } else {
-        LOGE("[APU] NnApiDelegateCreate symbol not resolved — CPU fallback");
+        LOGW("NnApiDelegateCreate not resolved — CPU fallback");
     }
 
-    // 7. Create interpreter
-    s->interpreter = pfn_TfLiteInterpreterCreate(s->model, s->interp_opts);
-    if (!s->interpreter) {
-        LOGE("[APU] InterpreterCreate failed");
-        pfn_TfLiteInterpreterOptionsDelete(s->interp_opts);
-        pfn_TfLiteModelDelete(s->model);
-        dlclose(s->adapter_handle); delete s; return 0L;
+    // Create interpreter
+    g_session.interpreter = pfn_TfLiteInterpreterCreate(g_session.model, g_session.interp_opts);
+    if (!g_session.interpreter) {
+        LOGE("nativeInit: InterpreterCreate failed");
+        pfn_TfLiteInterpreterOptionsDelete(g_session.interp_opts);
+        pfn_TfLiteModelDelete(g_session.model);
+        g_session.interp_opts = nullptr;
+        g_session.model = nullptr;
+        return 0L;
     }
 
-    // 8. Allocate tensors
-    if (pfn_TfLiteInterpreterAllocateTensors(s->interpreter) != kTfLiteOk) {
-        LOGE("[APU] AllocateTensors failed");
-        pfn_TfLiteInterpreterDelete(s->interpreter);
-        pfn_TfLiteInterpreterOptionsDelete(s->interp_opts);
-        pfn_TfLiteModelDelete(s->model);
-        dlclose(s->adapter_handle); delete s; return 0L;
+    // Allocate tensors
+    if (pfn_TfLiteInterpreterAllocateTensors(g_session.interpreter) != kTfLiteOk) {
+        LOGE("nativeInit: AllocateTensors failed");
+        pfn_TfLiteInterpreterDelete(g_session.interpreter);
+        pfn_TfLiteInterpreterOptionsDelete(g_session.interp_opts);
+        pfn_TfLiteModelDelete(g_session.model);
+        g_session.interpreter = nullptr;
+        g_session.interp_opts = nullptr;
+        g_session.model = nullptr;
+        return 0L;
     }
 
-    int ic = pfn_TfLiteInterpreterGetInputTensorCount(s->interpreter);
-    int oc = pfn_TfLiteInterpreterGetOutputTensorCount(s->interpreter);
-    LOGI("[APU] Tensors: in=%d out=%d ✓", ic, oc);
-
-    LOGI("[APU] Session ready: %p ✓", (void*)s);
-    return (jlong)s;
+    int ic = pfn_TfLiteInterpreterGetInputTensorCount(g_session.interpreter);
+    int oc = pfn_TfLiteInterpreterGetOutputTensorCount(g_session.interpreter);
+    LOGI("Tensors: in=%d out=%d — Session ready: %p", ic, oc, (void*)&g_session);
+    return (jlong)(intptr_t)&g_session;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeInfer(
-    JNIEnv* env, jobject /*thiz*/,
+    JNIEnv* env, jobject thiz,
     jlong handle, jstring prompt)
 {
     const char* prompt_str = env->GetStringUTFChars(prompt, nullptr);
     std::string input(prompt_str);
     env->ReleaseStringUTFChars(prompt, prompt_str);
 
-    NpuSession* s = (NpuSession*)handle;
-    if (!s || !s->interpreter) return env->NewStringUTF("APU_ERROR: invalid session");
+    NpuSession* s = (NpuSession*)(intptr_t)handle;
+    if (!s || !s->interpreter) {
+        LOGE("nativeInfer: invalid session");
+        return env->NewStringUTF("APU_ERROR: invalid session");
+    }
 
     TfLiteTensor* in_tensor = pfn_TfLiteInterpreterGetInputTensor(s->interpreter, 0);
-    if (!in_tensor) return env->NewStringUTF("APU_ERROR: no input tensor");
+    if (!in_tensor) {
+        LOGE("nativeInfer: no input tensor");
+        return env->NewStringUTF("APU_ERROR: no input tensor");
+    }
 
-    size_t copyLen = input.size();
-    size_t tensorBytes = pfn_TfLiteTensorByteSize(in_tensor);
-    if (copyLen > tensorBytes) copyLen = tensorBytes;
+    size_t copyLen = std::min(input.size(), (size_t)pfn_TfLiteTensorByteSize(in_tensor));
     memcpy(pfn_TfLiteTensorData(in_tensor), input.data(), copyLen);
+    LOGI("nativeInfer: input=%zu bytes", copyLen);
 
     TfLiteStatus status = pfn_TfLiteInterpreterInvoke(s->interpreter);
     if (status != kTfLiteOk) {
-        LOGE("[APU] Invoke failed: %d", (int)status);
+        LOGE("nativeInvoke failed: %d", (int)status);
         return env->NewStringUTF("APU_ERROR: invoke failed");
     }
 
     const TfLiteTensor* out_tensor = pfn_TfLiteInterpreterGetOutputTensor(s->interpreter, 0);
-    if (!out_tensor) return env->NewStringUTF("APU_ERROR: no output tensor");
+    if (!out_tensor) {
+        LOGE("nativeInfer: no output tensor");
+        return env->NewStringUTF("APU_ERROR: no output tensor");
+    }
 
     const void* outData = pfn_TfLiteTensorData(out_tensor);
     size_t outBytes = pfn_TfLiteTensorByteSize(out_tensor);
@@ -442,21 +519,20 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInfer(
         result = buf;
     }
 
-    LOGI("[APU] Smoke test result: %s", result.c_str());
+    LOGI("nativeInfer result: %s", result.c_str());
     return env->NewStringUTF(result.c_str());
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_aetheria_vance_brain_NeuronBridge_nativeClose(
-    JNIEnv* /*env*/, jobject /*thiz*/, jlong handle)
+    JNIEnv* env, jobject thiz, jlong handle)
 {
-    NpuSession* s = (NpuSession*)handle;
+    NpuSession* s = (NpuSession*)(intptr_t)handle;
     if (!s) return;
     std::lock_guard<std::mutex> lock(g_mutex);
     if (s->interpreter) { pfn_TfLiteInterpreterDelete(s->interpreter); s->interpreter = nullptr; }
     if (s->interp_opts) { pfn_TfLiteInterpreterOptionsDelete(s->interp_opts); s->interp_opts = nullptr; }
     if (s->model) { pfn_TfLiteModelDelete(s->model); s->model = nullptr; }
-    if (s->adapter_handle) { dlclose(s->adapter_handle); s->adapter_handle = nullptr; }
-    LOGI("[APU] Session closed: %p", (void*)s);
-    delete s;
+    s->adapter_handle = nullptr;
+    LOGI("Session closed: %p", (void*)s);
 }
