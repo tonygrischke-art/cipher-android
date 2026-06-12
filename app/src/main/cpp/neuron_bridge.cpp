@@ -167,26 +167,19 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeIsAvailable(
         return JNI_FALSE;
     }
 
-    // Try creating a test delegate to verify NNAPI is functional
+    // Try creating a test delegate with default options
     TfLiteNnapiDelegateOptions opts;
     memset(&opts, 0, sizeof(opts));
     pfn_TfLiteNnapiDelegateOptionsDefault(&opts);
-    opts.accelerator_name = "mtk-neuron_shim";
-    opts.disallow_nnapi_cpu = 1;
-    opts.execution_preference = 3; // kHighPerformance
 
     TfLiteDelegate* test_del = pfn_TfLiteNnapiDelegateCreate(&opts);
     if (test_del) {
-        LOGI("nativeIsAvailable: NNAPI delegate created successfully (mtk-neuron_shim)");
+        LOGI("nativeIsAvailable: NNAPI delegate created successfully");
         pfn_TfLiteNnapiDelegateDelete(test_del);
         return JNI_TRUE;
     }
 
-    // Try without accelerator_name (let system pick)
-    memset(&opts, 0, sizeof(opts));
-    pfn_TfLiteNnapiDelegateOptionsDefault(&opts);
-    opts.disallow_nnapi_cpu = 0; // Allow CPU fallback for availability check
-    opts.execution_preference = 3;
+    LOGW("nativeIsAvailable: NNAPI delegate creation failed");
 
     test_del = pfn_TfLiteNnapiDelegateCreate(&opts);
     if (test_del) {
@@ -238,23 +231,16 @@ Java_com_aetheria_vance_brain_NeuronBridge_nativeInit(
         return 0L;
     }
 
-    // Create and attach NNAPI delegate with MTK NPU targeting
+    // Create and attach NNAPI delegate (default options — auto-detect accelerator)
     if (pfn_TfLiteNnapiDelegateCreate && pfn_TfLiteNnapiDelegateOptionsDefault) {
         TfLiteNnapiDelegateOptions nn_opts;
         memset(&nn_opts, 0, sizeof(nn_opts));
         pfn_TfLiteNnapiDelegateOptionsDefault(&nn_opts);
-        nn_opts.accelerator_name = "mtk-neuron_shim";
-        nn_opts.disallow_nnapi_cpu = 1;
-        nn_opts.execution_preference = 3; // kHighPerformance
-
-        if (!cache_dir.empty()) {
-            nn_opts.cache_dir = cache_dir.c_str();
-        }
 
         g_session.nnapi_delegate = pfn_TfLiteNnapiDelegateCreate(&nn_opts);
         if (g_session.nnapi_delegate) {
             pfn_TfLiteInterpreterOptionsAddDelegate(g_session.interp_opts, g_session.nnapi_delegate);
-            LOGI("NNAPI delegate attached (mtk-neuron_shim, no CPU fallback)");
+            LOGI("NNAPI delegate attached");
         } else {
             LOGW("NNAPI delegate creation failed — will use CPU");
         }
