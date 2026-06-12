@@ -40,7 +40,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class VanceCoreService : Service() {
-    private var npuEngine: NpuEngine? = null
 
     companion object {
         private const val TAG = "CipherCore"
@@ -54,7 +53,13 @@ class VanceCoreService : Service() {
         const val ACTION_FOREGROUND_APP_CHANGED = "com.aetheria.vance.FOREGROUND_APP_CHANGED"
     }
 
-    // NpuEngine — manual init
+    @Inject lateinit var brainRouter: BrainRouter
+    @Inject lateinit var contextEngine: ContextEngine
+    @Inject lateinit var voicePipeline: VoicePipeline
+    @Inject lateinit var actionExecutor: ActionExecutor
+    @Inject lateinit var memoryStore: MemoryStore
+    @Inject lateinit var npuEngine: NpuEngine
+    @Inject lateinit var tfliteLlmEngine: TfliteLlmEngine
 
     private lateinit var skillMatcher: SkillMatcher
     private lateinit var skillLearner: SkillLearner
@@ -65,16 +70,7 @@ class VanceCoreService : Service() {
     private val deferredTranscripts = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     override fun onCreate() {
-        Log.d(TAG, "VanceCoreService.onCreate() ENTRY — about to call super.onCreate()
-        // NpuEngine manual init — replaces Hilt injection
-        Log.i("VanceCoreService", "onCreate: starting NpuEngine init")
-        try {
-            npuEngine = NpuEngine(applicationContext)
-            Log.i("VanceCoreService", "NpuEngine created successfully")
-        } catch (e: Exception) {
-            Log.e("VanceCoreService", "NpuEngine init failed: ${e.message}")
-        }
-")
+        Log.d(TAG, "VanceCoreService.onCreate() ENTRY — about to call super.onCreate()")
         try {
             super.onCreate()
             Log.d(TAG, "VanceCoreService.onCreate() — super.onCreate() done")
