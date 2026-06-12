@@ -23,10 +23,12 @@
 #include "tflite_headers/common.h"
 #include "tflite_headers/nnapi_delegate_c_api.h"
 
-#define LOG_TAG "NeuronBridge"
+#define LOG_TAG "CipherNeuronBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+void* g_neuron_adapter_handle = nullptr;
 
 // ── TFLite C API function pointers (loaded via dlsym) ────────────────────
 static TfLiteModel* (*pfn_TfLiteModelCreateFromFile)(const char*) = nullptr;
@@ -148,6 +150,22 @@ static bool resolve_tflite_symbols() {
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad — standard NNAPI delegate path");
     return JNI_VERSION_1_6;
+}
+
+// Load libneuron_adapter_mgvi.so from jniLibs path
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_aetheria_vance_brain_NeuronBridge_initAdapter(JNIEnv* env, jobject thiz) {
+    dlerror(); // Reset error context
+    // jniLibs staging: linker resolves by name from app's native lib path automatically
+    g_neuron_adapter_handle = dlopen("libneuron_adapter_mgvi.so", RTLD_NOW | RTLD_LOCAL);
+    if (!g_neuron_adapter_handle) {
+        const char* err = dlerror();
+        LOGE("FATAL: dlopen failed for libneuron_adapter_mgvi.so");
+        LOGE("Linker diagnostics: %s", err ? err : "unknown");
+        return JNI_FALSE;
+    }
+    LOGI("SUCCESS: libneuron_adapter_mgvi.so linked via jniLibs path");
+    return JNI_TRUE;
 }
 
 // Check if TFLite + NNAPI delegate are available

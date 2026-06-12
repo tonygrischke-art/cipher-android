@@ -33,6 +33,14 @@ class NeuronBridge {
         fun isLoaded(): Boolean = sLoaded
 
         /**
+         * Initialize the NPU adapter by loading libneuron_adapter_mgvi.so
+         * from the jniLibs path. Must be called before isAvailable() or nativeInit().
+         * @return true if adapter loaded successfully
+         */
+        @JvmStatic
+        external fun initAdapter(): Boolean
+
+        /**
          * Check if NPU hardware is available (wrapper for native method).
          */
         fun isAvailable(): Boolean = nativeIsAvailable()

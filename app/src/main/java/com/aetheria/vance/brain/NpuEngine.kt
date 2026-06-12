@@ -2,89 +2,49 @@ package com.aetheria.vance.brain
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import java.io.File
 
-/**
- * NPU inference engine using libneuron_bridge.so (Phase 2: TFLite C API + NNAPI SL shim).
- * Loads model via TFLite C API, delegates to MediaTek Neuron Adapter (MT6878 NPU).
- * No MediaPipe GenAI dependency at runtime — pure native.
- *
- * This class wraps NeuronBridge and exposes a simple init/generate/close API.
- * JNI methods are declared in NeuronBridge (companion object with external fun).
- */
 class NpuEngine(private val context: Context) {
 
-    companion object {
-        private const val TAG = "NpuEngine"
-        const val MODEL_FILENAME = "qwen05.tflite"
-    }
+    private var llmInference: LlmInference? = null
+    private val TAG = "CipherNpuEngine"
 
-    private var sessionHandle: Long = 0L
-    var isInitialised = false
-        private set
-
-    init {
-        // Load native library on construction
-        Log.i(TAG, "NpuEngine constructing...")
-        NeuronBridge.loadLibrary()
-        Log.i(TAG, "NpuEngine loadLibrary done: loaded=${NeuronBridge.isLoaded()}")
-    }
-
-    fun init(modelPath: String) {
-        if (!NeuronBridge.isLoaded()) {
-            Log.e(TAG, "NeuronBridge library not loaded")
-            isInitialised = false
-            return
+    fun setupInferenceEngine(): Boolean {
+        val modelFile = File("/data/local/tmp/cipher_models/cipher_qwen.task")
+        if (!modelFile.exists()) {
+            Log.e(TAG, "Abort: model missing at ${modelFile.absolutePath}")
+            return false
         }
 
-        this.modelPath = modelPath
-        Log.i(TAG, "Init from: $modelPath")
+        return try {
+            val options = LlmInference.LlmInferenceOptions.builder()
+                .setModelPath(modelFile.absolutePath)
+                .setMaxTokens(512)
+                .setTemperature(0.7f)
+                .setTopK(40)
+                .build()
 
-        // Probe NPU availability
-        val available = NeuronBridge.isAvailable()
-        Log.i(TAG, "NPU available: $available")
-        if (!available) {
-            Log.w(TAG, "NPU not available, engine will not initialise")
-            isInitialised = false
-            return
-        }
-
-        // Create session
-        val cacheDir = context.cacheDir.absolutePath
-        sessionHandle = NeuronBridge.nativeInit(modelPath, cacheDir)
-        if (sessionHandle == 0L) {
-            Log.e(TAG, "nativeInit failed")
-            isInitialised = false
-            return
-        }
-
-        isInitialised = true
-        Log.i(TAG, "NpuEngine initialised successfully ✓ (handle=$sessionHandle)")
-    }
-
-    suspend fun generate(prompt: String): String? {
-        if (!isInitialised || sessionHandle == 0L) return null
-        return withContext(Dispatchers.Default) {
-            try {
-                val result = NeuronBridge.nativeInfer(sessionHandle, prompt)
-                Log.i(TAG, "Inference complete (${result?.length ?: 0} chars)")
-                result
-            } catch (e: Exception) {
-                Log.e(TAG, "generate() failed: ${e.message}", e)
-                null
-            }
+            llmInference = LlmInference.createFromOptions(context, options)
+            Log.i(TAG, "MediaPipe LlmInference initialized successfully")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "LlmInference init failed: ${e.message}")
+            false
         }
     }
 
-    fun close() {
-        if (sessionHandle != 0L) {
-            NeuronBridge.nativeClose(sessionHandle)
-            sessionHandle = 0L
+    fun generateResponse(prompt: String): String? {
+        return try {
+            llmInference?.generateResponse(prompt)
+        } catch (e: Exception) {
+            Log.e(TAG, "Inference error: ${e.message}")
+            null
         }
-        isInitialised = false
-        Log.i(TAG, "NpuEngine closed")
     }
 
-    private var modelPath: String = ""
+    fun teardown() {
+        llmInference?.close()
+        llmInference = null
+    }
 }
