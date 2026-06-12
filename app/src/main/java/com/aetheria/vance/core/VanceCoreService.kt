@@ -58,6 +58,7 @@ class VanceCoreService : Service() {
     @Inject lateinit var actionExecutor: ActionExecutor
     @Inject lateinit var memoryStore: MemoryStore
     @Inject lateinit var npuEngine: NpuEngine
+    @Inject lateinit var tfliteLlmEngine: TfliteLlmEngine
 
     private lateinit var skillMatcher: SkillMatcher
     private lateinit var skillLearner: SkillLearner
@@ -168,6 +169,21 @@ class VanceCoreService : Service() {
         Log.d(TAG, "NPU engine init scheduled with model: ${modelFile.absolutePath}")
     } else {
         Log.w(TAG, "NPU model not found at: ${modelFile.absolutePath}")
+    }
+
+    // Initialize TFLiteLlmEngine (MediaPipe) with .task file
+    val taskFile = java.io.File("/data/local/tmp/cipher_models/qwen05_clean.task")
+    if (taskFile.exists()) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val ok = tfliteLlmEngine.initialize(taskFile.absolutePath)
+                Log.d(TAG, "TfliteLlmEngine init result: $ok")
+            } catch (e: Exception) {
+                Log.e(TAG, "TfliteLlmEngine init failed: ${e.message}")
+            }
+        }
+    } else {
+        Log.w(TAG, "TFLite task file not found at: ${taskFile.absolutePath}")
     }
 
     // Initialize MemoryEmbedder (ML Kit)

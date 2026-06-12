@@ -17,7 +17,7 @@ class NpuEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "NpuEngine"
-        const val MODEL_FILENAME = "qwen15_abliterated_int4.tflite"
+        const val MODEL_FILENAME = "qwen05.tflite"
     }
 
     private var sessionHandle: Long = 0L
