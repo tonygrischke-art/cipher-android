@@ -308,11 +308,15 @@ static void log_available_symbols() {
 // Step 2: JNI_OnLoad with try_load_neuron + symbol probe
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
     LOGI("JNI_OnLoad called");
-    g_neuron_handle = try_load_neuron();
-    LOGI("NPU handle: %s (lib: %s)", g_neuron_handle ? "VALID" : "NULL", g_loaded_lib ? g_loaded_lib : "none");
+    try {
+        g_neuron_handle = try_load_neuron();
+        LOGI("NPU handle: %s (lib: %s)", g_neuron_handle ? "VALID" : "NULL", g_loaded_lib ? g_loaded_lib : "none");
 
-    if (g_neuron_handle) {
-        log_available_symbols();
+        if (g_neuron_handle) {
+            log_available_symbols();
+        }
+    } catch (...) {
+        LOGE("JNI_OnLoad: exception caught");
     }
 
     return JNI_VERSION_1_6;
