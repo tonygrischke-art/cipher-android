@@ -61,6 +61,19 @@ class VanceChatActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Start core service — must happen from a foreground activity
+        try {
+            val coreIntent = Intent(this, VanceCoreService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(coreIntent)
+            } else {
+                startService(coreIntent)
+            }
+            Log.d(TAG, "VanceCoreService start requested")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start VanceCoreService", e)
+        }
+
         val feedbackMode = intent.getBooleanExtra("feedback_mode", false)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)

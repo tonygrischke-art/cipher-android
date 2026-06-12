@@ -70,8 +70,14 @@ class VanceCoreService : Service() {
     private val deferredTranscripts = java.util.concurrent.ConcurrentLinkedQueue<String>()
 
     override fun onCreate() {
-        super.onCreate()
-        Log.d(TAG, "VanceCoreService created")
+        Log.d(TAG, "VanceCoreService.onCreate() ENTRY — about to call super.onCreate()")
+        try {
+            super.onCreate()
+            Log.d(TAG, "VanceCoreService.onCreate() — super.onCreate() done")
+        } catch (e: Throwable) {
+            Log.e(TAG, "VanceCoreService.onCreate() SUPER.CREATE() CRASHED", e)
+            throw e
+        }
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             registerThermalListener()
