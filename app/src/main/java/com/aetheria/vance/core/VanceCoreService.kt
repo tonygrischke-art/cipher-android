@@ -159,8 +159,8 @@ class VanceCoreService : Service() {
         Log.d(TAG, "Initializing subsystems")
         voicePipeline.initialize()
 
-    // Initialize NPU engine with model in files dir
-    val modelFile = java.io.File(filesDir, NpuEngine.MODEL_FILENAME)
+    // Initialize NPU engine with model from /data/local/tmp/cipher_models
+    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05.tflite")
     if (modelFile.exists()) {
         serviceScope.launch(Dispatchers.IO) {
             npuEngine.init(modelFile.absolutePath)
