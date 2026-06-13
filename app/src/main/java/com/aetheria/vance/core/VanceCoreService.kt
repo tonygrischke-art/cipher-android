@@ -69,6 +69,7 @@ class VanceCoreService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i("VanceCoreService", "onCreate: started")
         Log.d(TAG, "VanceCoreService created")
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -162,8 +163,10 @@ class VanceCoreService : Service() {
     // Initialize NPU engine with model from /data/local/tmp/cipher_models
     val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05_int8.tflite")
     if (modelFile.exists()) {
+        Log.i("VanceCoreService", "onCreate: reached NPU init block")
         serviceScope.launch(Dispatchers.IO) {
-            npuEngine.setupInferenceEngine()
+            val result = npuEngine.setupInferenceEngine()
+            Log.i("VanceCoreService", "onCreate: setupInferenceEngine returned $result")
         }
         Log.d(TAG, "NPU engine init scheduled with model: ${modelFile.absolutePath}")
     } else {
