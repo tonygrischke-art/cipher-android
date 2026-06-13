@@ -121,10 +121,6 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
-    // MediaPipe GenAI — ONLY compile-time dependency for inference
-    implementation("com.google.mediapipe:tasks-genai:0.10.14")
-    implementation("com.google.mediapipe:tasks-core:0.10.14")
-
     // TensorFlow Lite — C API for NPU inference via standard NNAPI delegate
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")

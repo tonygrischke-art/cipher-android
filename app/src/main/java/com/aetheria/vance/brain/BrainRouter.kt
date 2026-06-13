@@ -3,6 +3,7 @@ package com.aetheria.vance.brain
 import android.util.Log
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.context.ContextEngine
+import com.aetheria.vance.npu.NpuEngine
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**

@@ -33,6 +33,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -208,6 +214,8 @@ fun CipherChatScreen(feedbackMode: Boolean = false) {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // Show feedback bar when opened via orb long-press
     LaunchedEffect(feedbackMode) {
@@ -221,6 +229,11 @@ fun CipherChatScreen(feedbackMode: Boolean = false) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.size - 1)
         }
+    }
+
+    // Auto-focus input on composition
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
     }
 
     Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
@@ -340,10 +353,26 @@ fun CipherChatScreen(feedbackMode: Boolean = false) {
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
+                    .clickable {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    },
                 placeholder = { Text("Say something...") },
                 shape = RoundedCornerShape(24.dp),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (inputText.isNotBlank()) {
+                            viewModel.sendMessage(inputText)
+                            inputText = ""
+                            keyboardController?.hide()
+                        }
+                    }
+                )
             )
             Spacer(modifier = Modifier.width(8.dp))
             FilledIconButton(

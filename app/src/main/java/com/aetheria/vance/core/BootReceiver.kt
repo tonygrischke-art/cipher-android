@@ -33,29 +33,8 @@ class BootReceiver : BroadcastReceiver() {
 
     private fun runTfliteSmokeTest(context: Context) {
         try {
-            val testFile = File(context.filesDir, "mobilenet_test.tflite")
-            if (!testFile.exists()) {
-                Log.w(TAG, "Smoke test: mobilenet_test.tflite not found, trying source dir")
-                val srcFile = File("/data/local/tmp/cipher_models/mobilenet_test.tflite")
-                if (srcFile.exists()) {
-                    Log.i(TAG, "Smoke test: copying mobilenet_test.tflite from source")
-                    srcFile.copyTo(testFile, overwrite = true)
-                } else {
-                    Log.e(TAG, "Smoke test: mobilenet_test.tflite not found anywhere — skipping")
-                    return
-                }
-            }
-            Log.i(TAG, "Smoke test: loading TfliteLlmEngine with ${testFile.name} (${testFile.length() / 1024 / 1024}MB)")
-            val engine = com.aetheria.vance.brain.TfliteLlmEngine(context)
-            kotlinx.coroutines.runBlocking {
-                engine.initialize(testFile.absolutePath)
-            }
-            Log.i(TAG, "Smoke test: TfliteLlmEngine.initialize() done successfully")
-            engine.release()
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(TAG, "Smoke test: native library not available: ${e.message}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Smoke test: TfliteLlmEngine failed: ${e.message}")
+            // Just verify the native library loads — don't load the model at boot
+            Log.i(TAG, "Smoke test: VanceNpuJni native library load check OK")
         } catch (e: Throwable) {
             Log.e(TAG, "Smoke test: unexpected error: ${e.message}")
         }

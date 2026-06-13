@@ -11,6 +11,7 @@ import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.context.MemoryDao
 import com.aetheria.vance.context.LoraCheckpointDao
 import com.aetheria.vance.context.RoutineEngine
+import com.aetheria.vance.npu.NpuEngine
 import com.aetheria.vance.shizuku.ShizukuBridge
 import com.aetheria.vance.voice.VoicePipeline
 import dagger.Module
@@ -46,12 +47,6 @@ object AppModule {
     @Singleton
     fun provideNpuEngine(@ApplicationContext context: Context): NpuEngine {
         return NpuEngine(context)
-    }
-
-    @Provides
-    @Singleton
-    fun provideTfliteLlmEngine(@ApplicationContext context: Context): TfliteLlmEngine {
-        return TfliteLlmEngine(context)
     }
 
     @Provides
@@ -176,7 +171,6 @@ object AppModule {
         npuEngine: NpuEngine,
         skillMatcher: SkillMatcher,
         memoryRetriever: MemoryRetriever,
-        tfliteLlmEngine: TfliteLlmEngine,
         actionExecutor: ActionExecutor,
         memoryFineTuner: MemoryFineTuner,
         preferenceEngine: PreferenceEngine,
@@ -188,7 +182,7 @@ object AppModule {
             npuEngine = npuEngine,
             skillMatcher = skillMatcher,
             memoryRetriever = memoryRetriever,
-            tfliteLlmEngine = tfliteLlmEngine,
+            tfliteLlmEngine = null,
             actionExecutor = actionExecutor,
             memoryFineTuner = memoryFineTuner,
             preferenceEngine = preferenceEngine,

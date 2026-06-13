@@ -22,8 +22,7 @@ import com.aetheria.vance.brain.BrainRouter
 import com.aetheria.vance.brain.SkillLearner
 import com.aetheria.vance.brain.SkillMatcher
 import com.aetheria.vance.context.ContextEngine
-import com.aetheria.vance.brain.NpuEngine
-import com.aetheria.vance.brain.TfliteLlmEngine
+import com.aetheria.vance.npu.NpuEngine
 import com.aetheria.vance.context.MemoryStore
 import com.aetheria.vance.notifications.VanceNotificationListener
 import com.aetheria.vance.ui.FloatingOrbService
@@ -59,7 +58,6 @@ class VanceCoreService : Service() {
     @Inject lateinit var actionExecutor: ActionExecutor
     @Inject lateinit var memoryStore: MemoryStore
     @Inject lateinit var npuEngine: NpuEngine
-    @Inject lateinit var tfliteLlmEngine: TfliteLlmEngine
 
     private lateinit var skillMatcher: SkillMatcher
     private lateinit var skillLearner: SkillLearner
@@ -162,7 +160,7 @@ class VanceCoreService : Service() {
         voicePipeline.initialize()
 
     // Initialize NPU engine with model from /data/local/tmp/cipher_models
-    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05_clean.task")
+    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05_int8.tflite")
     if (modelFile.exists()) {
         serviceScope.launch(Dispatchers.IO) {
             npuEngine.setupInferenceEngine()
@@ -172,20 +170,7 @@ class VanceCoreService : Service() {
         Log.w(TAG, "NPU model not found at: ${modelFile.absolutePath}")
     }
 
-    // Initialize TFLiteLlmEngine (MediaPipe) with .task file
-    val taskFile = java.io.File("/data/local/tmp/cipher_models/qwen05_clean.task")
-    if (taskFile.exists()) {
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val ok = tfliteLlmEngine.initialize(taskFile.absolutePath)
-                Log.d(TAG, "TfliteLlmEngine init result: $ok")
-            } catch (e: Exception) {
-                Log.e(TAG, "TfliteLlmEngine init failed: ${e.message}")
-            }
-        }
-    } else {
-        Log.w(TAG, "TFLite task file not found at: ${taskFile.absolutePath}")
-    }
+    // MediaPipe TfliteLlmEngine removed — all inference via native NNAPI bridge
 
     // Initialize MemoryEmbedder (ML Kit)
     serviceScope.launch(Dispatchers.IO) {

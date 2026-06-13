@@ -44,7 +44,6 @@ import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.aetheria.vance.brain.TfliteLlmEngine
 import com.aetheria.vance.core.VanceCoreService
 import com.aetheria.vance.shizuku.ShizukuBridge
 import com.aetheria.vance.ui.theme.CipherTheme
@@ -126,8 +125,7 @@ class OnboardingActivity : ComponentActivity() {
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
-    private val shizukuBridge: ShizukuBridge,
-    private val liteRTEngine: TfliteLlmEngine
+    private val shizukuBridge: ShizukuBridge
 ) : ViewModel() {
 
     var currentPage by mutableIntStateOf(0)
