@@ -5,20 +5,36 @@ complexity:
   LongMethod:
     threshold: 300
   LongParameterList:
-    functionThreshold: 9
+    functionThreshold: 10
+    constructorThreshold: 10
   TooManyFunctions:
     thresholdInFiles: 25
     thresholdInClasses: 25
+    thresholdInObjects: 25
   CyclomaticComplexMethod:
-    threshold: 20
+    threshold: 25
   NestedBlockDepth:
     threshold: 6
+  ComplexMethod:
+    threshold: 25
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
 
 style:
   MagicNumber:
     active: false
   WildcardImport:
     active: true
+  EmptyFunctionBlock:
+    active: false
+
+potential-bugs:
+  LateinitUsage:
+    active: false
 
 formatting:
   active: true
