@@ -165,6 +165,8 @@ class BrainRouter(
         }
         Log.w(TAG, "MainLlm unavailable")
 
+        // Tier 4: TfliteLlmEngine removed — all inference via native NNAPI bridge
+
         // All engines failed
         Log.e(TAG, "All inference engines unavailable")
         return BrainResult(

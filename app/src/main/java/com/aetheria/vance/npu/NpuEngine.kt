@@ -12,7 +12,7 @@ class NpuEngine(private val context: Context) {
 
     companion object {
         private const val MODEL_PATH =
-            "/data/local/tmp/cipher_models/qwen05_int8.tflite"
+            "/data/local/tmp/cipher_models/qwen15_int8.tflite"
     }
 
     val isInitialised: Boolean
