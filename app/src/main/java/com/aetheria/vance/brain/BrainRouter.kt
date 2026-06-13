@@ -30,7 +30,6 @@ class BrainRouter(
     private val npuEngine: NpuEngine,
     private val skillMatcher: SkillMatcher,
     private val memoryRetriever: MemoryRetriever?,
-    private val tfliteLlmEngine: TfliteLlmEngine?,
     private val actionExecutor: ActionExecutor,
     private val memoryFineTuner: MemoryFineTuner,
     private val preferenceEngine: PreferenceEngine? = null,
@@ -165,23 +164,6 @@ class BrainRouter(
             return BrainResult(spokenResponse = mainResult)
         }
         Log.w(TAG, "MainLlm unavailable")
-
-        // Tier 4: TfliteLlmEngine — last resort
-        if (tfliteLlmEngine != null && tfliteLlmEngine.isReady) {
-            try {
-                val tfliteResult = withTimeoutOrNull(45_000L) {
-                    tfliteLlmEngine.generate(fullPrompt)
-                }
-                if (tfliteResult != null) {
-                    Log.i(TAG, "TfliteLlmEngine responded")
-                    lastPrompt = transcript
-                    lastResponse = tfliteResult
-                    return BrainResult(spokenResponse = tfliteResult)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "TfliteLlmEngine failed: ${e.message}")
-            }
-        }
 
         // All engines failed
         Log.e(TAG, "All inference engines unavailable")

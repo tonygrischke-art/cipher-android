@@ -182,7 +182,6 @@ object AppModule {
             npuEngine = npuEngine,
             skillMatcher = skillMatcher,
             memoryRetriever = memoryRetriever,
-            tfliteLlmEngine = null,
             actionExecutor = actionExecutor,
             memoryFineTuner = memoryFineTuner,
             preferenceEngine = preferenceEngine,
