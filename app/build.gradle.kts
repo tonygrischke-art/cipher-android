@@ -123,7 +123,6 @@ dependencies {
 
     // TensorFlow Lite — C API for NPU inference via standard NNAPI delegate
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.16.1")
 
     // Shizuku
     implementation("dev.rikka.shizuku:api:13.1.5")

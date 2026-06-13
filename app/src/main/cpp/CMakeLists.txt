@@ -128,15 +128,6 @@ target_link_options(vance_npu_engine PRIVATE
     -Wl,-s
 )
 
-# ── TFLite shared library (bundled in jniLibs from AAR) ─────────────────
-add_library(
-    tensorflowlite
-    SHARED
-    IMPORTED
-)
-set_target_properties(
-    tensorflowlite
-    PROPERTIES
-    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libtensorflowlite_jni.so
-)
-target_link_libraries(vance_npu_engine tensorflowlite)
+# TFLite symbols resolved at runtime via dlopen — no CMake link needed.
+# The Gradle tensorflow-lite:2.16.1 dependency packages libtensorflowlite_jni.so
+# into the APK, and vance_npu_engine.cpp uses dlsym/RTLD_NOLOAD at runtime.
