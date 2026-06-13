@@ -18,10 +18,10 @@
 #include <mutex>
 #include <cstring>
 
-#include "tflite_headers/c_api.h"
-#include "tflite_headers/c_api_experimental.h"
-#include "tflite_headers/common.h"
-#include "tflite_headers/nnapi_delegate_c_api.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_experimental.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h"
 
 #define LOG_TAG "CipherNeuronBridge"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
