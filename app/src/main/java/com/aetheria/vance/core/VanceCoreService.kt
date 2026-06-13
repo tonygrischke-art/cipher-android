@@ -158,7 +158,11 @@ class VanceCoreService : Service() {
 
     private fun initializeSubsystems() {
         Log.d(TAG, "Initializing subsystems")
-        voicePipeline.initialize()
+        try {
+            voicePipeline.initialize()
+        } catch (e: Exception) {
+            Log.e(TAG, "VoicePipeline init failed — continuing: ${e.message}")
+        }
 
     // Initialize NPU engine with model from /data/local/tmp/cipher_models
     val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen15_int8.tflite")
