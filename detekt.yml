@@ -15,8 +15,6 @@ complexity:
     threshold: 25
   NestedBlockDepth:
     threshold: 6
-  ComplexMethod:
-    threshold: 25
 
 exceptions:
   TooGenericExceptionCaught:
@@ -24,17 +22,15 @@ exceptions:
   SwallowedException:
     active: false
 
+empty-blocks:
+  EmptyFunctionBlock:
+    active: false
+
 style:
   MagicNumber:
     active: false
   WildcardImport:
     active: true
-  EmptyFunctionBlock:
-    active: false
-
-potential-bugs:
-  LateinitUsage:
-    active: false
 
 formatting:
   active: true
