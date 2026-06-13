@@ -15,8 +15,7 @@
 #include <cstring>
 #include <cstdlib>
 
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h"
+#include "tflite_stubs.h"
 
 #define LOG_TAG "WakeNPUEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)

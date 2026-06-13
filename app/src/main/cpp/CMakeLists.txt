@@ -8,13 +8,9 @@
 #   - No NnApiSL shim injection needed
 #   - System NNAPI APEX routes to MTK vendor driver automatically
 #
-# TFLite headers: app/src/main/cpp/tflite_headers/
-#   Copy from TF 2.16.1 source tree:
-#     tensorflow/lite/c/c_api.h
-#     tensorflow/lite/c/c_api_experimental.h
-#     tensorflow/lite/c/common.h
-#     tensorflow/lite/delegates/nnapi/nnapi_delegate_c_api.h
-#   (NeuralNetworksSupportLibrary.h no longer needed)
+# TFLite headers: app/src/main/cpp/tflite_stubs.h
+#   Minimal forward-declarations for types used via dlsym at runtime.
+#   The 2.16.1 AAR header tree is broken (missing core/async/c/types.h).
 # ============================================================================
 
 cmake_minimum_required(VERSION 3.18.1)
@@ -25,9 +21,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_library(log-lib log)
 
-# ── TFLite headers ─────────────────────────────────────────────────────────
-set(TFLITE_HEADERS_DIR ${CMAKE_SOURCE_DIR}/tflite_headers)
-
 # ── NeuronBridge JNI library ───────────────────────────────────────────────
 add_library(
     neuron_bridge
@@ -37,7 +30,6 @@ add_library(
 
 target_include_directories(neuron_bridge PRIVATE
     ${CMAKE_SOURCE_DIR}
-    ${TFLITE_HEADERS_DIR}
 )
 
 target_link_libraries(
@@ -77,7 +69,6 @@ add_library(
 
 target_include_directories(wake_npu_engine PRIVATE
     ${CMAKE_SOURCE_DIR}
-    ${TFLITE_HEADERS_DIR}
 )
 
 target_link_libraries(wake_npu_engine
@@ -107,7 +98,6 @@ add_library(
 
 target_include_directories(vance_npu_engine PRIVATE
     ${CMAKE_SOURCE_DIR}
-    ${TFLITE_HEADERS_DIR}
 )
 
 target_link_libraries(vance_npu_engine
