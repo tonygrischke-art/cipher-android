@@ -187,7 +187,7 @@ Java_com_aetheria_vance_npu_VanceNpuJni_initializeModel(
     if (pfn_TfLiteNnapiDelegateOptionsDefault && pfn_TfLiteNnapiDelegateCreate) {
         TfLiteNnapiDelegateOptions nnapi_opts;
         memset(&nnapi_opts, 0, sizeof(nnapi_opts));
-        pfn_TfLiteNnapiDelegateOptionsDefault(&nnapi_opts);
+        // TfLiteNnapiDelegateOptionsDefault intentionally omitted — SEGV_ACCERR on MT6878
 
         g_engine.delegate = pfn_TfLiteNnapiDelegateCreate(&nnapi_opts);
         if (g_engine.delegate) {

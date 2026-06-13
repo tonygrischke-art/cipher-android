@@ -161,7 +161,7 @@ class VanceCoreService : Service() {
         voicePipeline.initialize()
 
     // Initialize NPU engine with model from /data/local/tmp/cipher_models
-    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen05_int8.tflite")
+    val modelFile = java.io.File("/data/local/tmp/cipher_models/qwen15_int8.tflite")
     if (modelFile.exists()) {
         Log.i("VanceCoreService", "onCreate: reached NPU init block")
         serviceScope.launch(Dispatchers.IO) {

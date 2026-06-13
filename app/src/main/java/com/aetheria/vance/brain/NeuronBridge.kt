@@ -13,22 +13,21 @@ class NeuronBridge {
         private const val TAG = "NeuronBridge"
         private var sLoaded = false
 
-        /**
-         * Loads libneuron_bridge.so. Must be called before any native methods.
-         * Safe to call multiple times.
-         */
-        fun loadLibrary(): Boolean {
-            if (sLoaded) return true
-            return try {
+        init {
+            try {
                 System.loadLibrary("neuron_bridge")
                 sLoaded = true
                 Log.i(TAG, "libneuron_bridge.so loaded ✓")
-                true
             } catch (e: UnsatisfiedLinkError) {
                 Log.e(TAG, "Failed to load libneuron_bridge.so: ${e.message}")
-                false
             }
         }
+
+        /**
+         * Returns whether libneuron_bridge.so is loaded.
+         * The static init block handles loading automatically.
+         */
+        fun loadLibrary(): Boolean = sLoaded
 
         fun isLoaded(): Boolean = sLoaded
 

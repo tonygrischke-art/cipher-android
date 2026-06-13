@@ -279,6 +279,12 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var animator: ValueAnimator? = null
     private var isAnimationPaused = false
+    private val idlePauseRunnable = Runnable {
+        if (currentState == FloatingOrbService.OrbState.IDLE) {
+            animator?.pause()
+            isAnimationPaused = true
+        }
+    }
 
     init {
         setWillNotDraw(false)
@@ -289,15 +295,10 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
         currentState = state
         when (state) {
             FloatingOrbService.OrbState.IDLE -> {
-                postDelayed({
-                    if (currentState == FloatingOrbService.OrbState.IDLE) {
-                        animator?.pause()
-                        isAnimationPaused = true
-                    }
-                }, 500L)
+                postDelayed(idlePauseRunnable, 500L)
             }
             else -> {
-                removeCallbacks(null)
+                removeCallbacks(idlePauseRunnable)
                 if (isAnimationPaused) {
                     animator?.resume()
                     isAnimationPaused = false
@@ -317,7 +318,10 @@ class OrbCanvasView(context: Context) : FrameLayout(context) {
         animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 33L
             repeatCount = ValueAnimator.INFINITE
-            addUpdateListener { invalidate() }
+            addUpdateListener { anim ->
+                animationTime = (animationTime + 0.033f) % 100f
+                invalidate()
+            }
             start()
         }
     }
