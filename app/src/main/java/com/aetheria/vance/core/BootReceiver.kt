@@ -15,7 +15,6 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         Log.i(TAG, "onReceive action=${intent?.action}")
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
-            // Wait a moment for Application.onCreate model copy to start
             Thread {
                 try {
                     Thread.sleep(2000)
@@ -25,58 +24,14 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }.start()
         }
-        // Note: ACTION_MY_PACKAGE_REPLACED intentionally NOT handled here.
-        // The TfliteLlmEngine smoke test crashes when run from the replace
-        // callback because the model isn't ready yet. VanceCoreService handles
-        // its own init in onCreate().
     }
 
     private fun runTfliteSmokeTest(context: Context) {
         try {
             // Just verify the native library loads — don't load the model at boot
-            Log.i(TAG, "Smoke test: VanceNpuJni native library load check OK")
+            Log.i(TAG, "Smoke test: VanceNpuJni loaded=${com.aetheria.vance.npu.VanceNpuJni.isLoaded()}")
         } catch (e: Throwable) {
             Log.e(TAG, "Smoke test: unexpected error: ${e.message}")
         }
-    }
-
-    private fun runNpuSmokeTest(context: Context) {
-        Log.i(TAG, "NPU: checking NeuronBridge.isAvailable...")
-        val available = try {
-            NeuronBridge.isAvailable()
-        } catch (e: Throwable) {
-            Log.e(TAG, "NPU: NeuronBridge.isAvailable threw: ${e.message}")
-            false
-        }
-        Log.i(TAG, "NPU: NeuronBridge.isAvailable=$available")
-        if (!available) return
-
-        Thread {
-            try {
-                val modelFile = File(context.filesDir, "mobilenet_test.tflite")
-                val modelPath = if (modelFile.exists()) {
-                    Log.i(TAG, "NPU: using mobilenet_test.tflite (${modelFile.length() / 1024}KB)")
-                    modelFile.absolutePath
-                } else {
-                    Log.w(TAG, "NPU: mobilenet_test.tflite not in filesDir, trying /data/local/tmp/cipher_models/")
-                    "/data/local/tmp/cipher_models/mobilenet_test.tflite"
-                }
-                val cacheDir = context.cacheDir.absolutePath + "/neuron_test"
-
-                Log.i(TAG, "NPU: nativeInit model=$modelPath cache=$cacheDir")
-                val handle = NeuronBridge.nativeInit(modelPath, cacheDir)
-                Log.i(TAG, "NPU: nativeInit handle=$handle")
-                if (handle != 0L) {
-                    val result = NeuronBridge.nativeInfer(handle, "Hello")
-                    Log.i(TAG, "NPU: nativeInfer result='$result'")
-                    NeuronBridge.nativeClose(handle)
-                    Log.i(TAG, "NPU: smoke test COMPLETE")
-                } else {
-                    Log.e(TAG, "NPU: nativeInit returned 0")
-                }
-            } catch (e: Throwable) {
-                Log.e(TAG, "NPU: smoke test exception: ${e.message}")
-            }
-        }.start()
     }
 }

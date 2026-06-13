@@ -7,42 +7,77 @@ import android.util.Log
  * Handles TFLite wake word classifier model inference via NNAPI delegate
  * on the MediaTek NPU 655 (MT6878).
  *
- * Model must be INT8 post-training quantized. FP32 will fail with
- * disallow_nnapi_cpu = 1 enforced by the NNAPI delegate.
- *
- * Model path convention: /data/local/tmp/cipher_models/wake_word_int8.tflite
+ * Safe loading — if the native lib is unavailable, methods are no-ops.
  */
 class WakeNPUEngine {
 
     companion object {
         private const val TAG = "WakeNPUEngine"
+        @Volatile private var sLoaded = false
+        @Volatile private var sLoadAttempted = false
 
-        init {
+        @Synchronized
+        private fun loadLibrary() {
+            if (sLoadAttempted) return
+            sLoadAttempted = true
             try {
                 System.loadLibrary("wake_npu_engine")
+                sLoaded = true
                 Log.i(TAG, "wake_npu_engine loaded")
             } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "Failed to load wake_npu_engine: ${e.message}")
+                Log.e(TAG, "wake_npu_engine load failed: ${e.message}")
+                sLoaded = false
+            } catch (e: SecurityException) {
+                Log.e(TAG, "wake_npu_engine security error: ${e.message}")
+                sLoaded = false
             }
+        }
+
+        init {
+            loadLibrary()
+        }
+
+        fun isLoaded(): Boolean = sLoaded
+    }
+
+    fun initializeModel(modelPath: String): Boolean {
+        if (!sLoaded) {
+            Log.w(TAG, "initializeModel: native lib not loaded")
+            return false
+        }
+        return try {
+            nativeInitializeModel(modelPath)
+        } catch (e: Exception) {
+            Log.e(TAG, "nativeInitializeModel failed: ${e.message}")
+            false
         }
     }
 
-    /**
-     * Load and initialize the INT8 TFLite wake word model.
-     * @param modelPath absolute path to .tflite file
-     * @return true if NPU delegate initialized and tensors allocated
-     */
-    external fun initializeModel(modelPath: String): Boolean
+    fun runInference(mfccInput: FloatArray): Float {
+        if (!sLoaded) return -1f
+        return try {
+            nativeRunInference(mfccInput)
+        } catch (e: Exception) {
+            Log.e(TAG, "nativeRunInference failed: ${e.message}")
+            -1f
+        }
+    }
 
-    /**
-     * Run inference on a single MFCC feature frame.
-     * @param mfccInput float array of MFCC coefficients
-     * @return confidence score 0.0–1.0, or -1.0 on error
-     */
-    external fun runInference(mfccInput: FloatArray): Float
+    fun terminateEngine() {
+        if (!sLoaded) return
+        try {
+            nativeTerminateEngine()
+        } catch (e: Exception) {
+            Log.e(TAG, "nativeTerminateEngine failed: ${e.message}")
+        }
+    }
 
-    /**
-     * Release all native resources. Call from onDestroy / cleanup.
-     */
-    external fun terminateEngine()
+    @JvmStatic
+    private external fun nativeInitializeModel(modelPath: String): Boolean
+
+    @JvmStatic
+    private external fun nativeRunInference(mfccInput: FloatArray): Float
+
+    @JvmStatic
+    private external fun nativeTerminateEngine()
 }

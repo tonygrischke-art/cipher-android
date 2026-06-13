@@ -42,6 +42,14 @@ class FloatingOrbService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // Crash handler — write crash logs to files dir
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val log = java.io.File(filesDir, "cipher_crash_${System.currentTimeMillis()}.txt")
+                log.writeText("FloatingOrb thread: ${thread.name}\n${throwable.stackTraceToString()}")
+                Log.e(TAG, "Uncaught in FloatingOrb (${thread.name}): ${throwable.message}")
+            } catch (_: Exception) {}
+        }
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         // Fix 3: Start as foreground service to prevent Android 10+ crash
         startForeground()

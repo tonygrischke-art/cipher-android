@@ -35,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -70,6 +71,16 @@ class VanceCoreService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i("VanceCoreService", "onCreate: started")
+
+        // Crash handler — write crash logs to files dir
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val log = File(filesDir, "cipher_crash_${System.currentTimeMillis()}.txt")
+                log.writeText("Service thread: ${thread.name}\n${throwable.stackTraceToString()}")
+                Log.e(TAG, "Uncaught in service (${thread.name}): ${throwable.message}")
+            } catch (_: Exception) {}
+        }
+
         Log.d(TAG, "VanceCoreService created")
         powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

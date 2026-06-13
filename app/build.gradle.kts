@@ -157,6 +157,13 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
+    // Memory leak detection (debug only)
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+
+    // Network inspector (debug only)
+    debugImplementation("com.github.chuckerteam.chucker:library:4.0.0")
+    releaseImplementation("com.github.chuckerteam.chucker:library-no-op:4.0.0")
+
     // Detekt
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.6")
 }
