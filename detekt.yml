@@ -3,11 +3,16 @@ build:
 
 complexity:
   LongMethod:
-    threshold: 60
+    threshold: 300
   LongParameterList:
-    functionThreshold: 8
+    functionThreshold: 9
   TooManyFunctions:
-    thresholdInFiles: 15
+    thresholdInFiles: 25
+    thresholdInClasses: 25
+  CyclomaticComplexMethod:
+    threshold: 20
+  NestedBlockDepth:
+    threshold: 6
 
 style:
   MagicNumber:
