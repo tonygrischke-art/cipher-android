@@ -127,3 +127,16 @@ target_link_options(vance_npu_engine PRIVATE
     -Wl,--gc-sections
     -Wl,-s
 )
+
+# ── TFLite shared library (bundled in jniLibs from AAR) ─────────────────
+add_library(
+    tensorflowlite
+    SHARED
+    IMPORTED
+)
+set_target_properties(
+    tensorflowlite
+    PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libtensorflowlite_jni.so
+)
+target_link_libraries(vance_npu_engine tensorflowlite)
