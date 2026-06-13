@@ -1,0 +1,21 @@
+build:
+  maxIssues: 0
+
+complexity:
+  LongMethod:
+    threshold: 60
+  LongParameterList:
+    functionThreshold: 8
+  TooManyFunctions:
+    thresholdInFiles: 15
+
+style:
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: true
+
+formatting:
+  active: true
+  android: true
+  autoCorrect: false
