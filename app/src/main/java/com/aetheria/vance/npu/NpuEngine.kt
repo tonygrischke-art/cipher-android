@@ -21,7 +21,7 @@ class NpuEngine(private val context: Context) {
         }
 
         // 2. Verify model file exists
-        val modelPath = "/data/local/tmp/cipher_models/cipher_qwen.task"
+        val modelPath = "/data/local/tmp/cipher_models/qwen05.tflite"
         val modelFile = File(modelPath)
         if (!modelFile.exists()) {
             Log.e(TAG, "Model file missing at $modelPath — cannot init NPU")
