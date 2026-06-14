@@ -148,7 +148,6 @@ class ShizukuBridge {
             val result = withTimeoutOrNull(timeoutMs) {
                 try {
                     val rishPath = listOf(
-                        "${context.filesDir.parent}/bin/rish",
                         "/data/local/tmp/rish",
                         "rish"  // fallback to PATH
                     ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
@@ -185,7 +184,6 @@ class ShizukuBridge {
 
         try {
             val rishPath = listOf(
-                        "${context.filesDir.parent}/bin/rish",
                         "/data/local/tmp/rish",
                         "rish"  // fallback to PATH
                     ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"

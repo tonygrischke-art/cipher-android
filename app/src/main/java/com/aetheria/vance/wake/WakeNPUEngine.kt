@@ -38,6 +38,15 @@ class WakeNPUEngine {
         }
 
         fun isLoaded(): Boolean = sLoaded
+
+        @JvmStatic
+        private external fun nativeInitializeModel(modelPath: String): Boolean
+
+        @JvmStatic
+        private external fun nativeRunInference(mfccInput: FloatArray): Float
+
+        @JvmStatic
+        private external fun nativeTerminateEngine()
     }
 
     fun initializeModel(modelPath: String): Boolean {
@@ -71,13 +80,4 @@ class WakeNPUEngine {
             Log.e(TAG, "nativeTerminateEngine failed: ${e.message}")
         }
     }
-
-    @JvmStatic
-    private external fun nativeInitializeModel(modelPath: String): Boolean
-
-    @JvmStatic
-    private external fun nativeRunInference(mfccInput: FloatArray): Float
-
-    @JvmStatic
-    private external fun nativeTerminateEngine()
 }
