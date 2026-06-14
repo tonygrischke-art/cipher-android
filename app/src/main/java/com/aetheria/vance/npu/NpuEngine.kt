@@ -7,7 +7,7 @@ import java.io.File
 
 class NpuEngine(private val context: Context) {
 
-    private const val TAG = "NpuEngine"
+    private val TAG = "NpuEngine"
     private var sessionHandle: Long = 0L
     private var isNpuActive = false
 
