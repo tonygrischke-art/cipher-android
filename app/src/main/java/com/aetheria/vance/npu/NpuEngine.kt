@@ -7,7 +7,8 @@ import java.io.File
 
 class NpuEngine(private val context: Context) {
 
-    private var llmInference: Any? = null
+    private const val TAG = "NpuEngine"
+    private var sessionHandle: Long = 0L
     private var isNpuActive = false
 
     fun initialize(): Boolean {
@@ -15,51 +16,55 @@ class NpuEngine(private val context: Context) {
         val runtime = Runtime.getRuntime()
         val availMB = runtime.freeMemory() / 1048576
         if (availMB < 200) {
-            Log.e("NpuEngine", "Insufficient RAM (${availMB}MB) — skipping NPU init")
+            Log.e(TAG, "Insufficient RAM (${availMB}MB) — skipping NPU init")
             return false
         }
 
         // 2. Verify model file exists
-        val modelPath = "/data/local/tmp/cipher_models/cipher_model.task"
+        val modelPath = "/data/local/tmp/cipher_models/cipher_qwen.task"
         val modelFile = File(modelPath)
         if (!modelFile.exists()) {
-            Log.e("NpuEngine", "Model file missing at $modelPath — cannot init NPU")
+            Log.e(TAG, "Model file missing at $modelPath — cannot init NPU")
             return false
         }
-        Log.i("NpuEngine", "Model found: ${modelFile.length() / 1048576}MB")
+        Log.i(TAG, "Model found: ${modelFile.length() / 1048576}MB")
 
         // 3. Init NeuronBridge
         if (!NeuronBridge.initialize()) {
-            Log.w("NpuEngine", "NeuronBridge unavailable — will fall back to llama.cpp")
+            Log.w(TAG, "NeuronBridge unavailable — will fall back to llama.cpp")
             return false
         }
 
-        // 4. NeuronBridge is ready — NPU inference available via JNI
+        // 4. Create NPU inference session
+        val cacheDir = context.cacheDir.absolutePath
+        sessionHandle = NeuronBridge.createSession(modelPath, cacheDir)
+        if (sessionHandle == 0L) {
+            Log.e(TAG, "Failed to create NPU session")
+            return false
+        }
+
         isNpuActive = true
-        Log.i("NpuEngine", "NPU engine ready via NeuronBridge")
+        Log.i(TAG, "NPU engine ready — session handle=$sessionHandle")
         return true
     }
 
     fun isActive() = isNpuActive
 
     fun runInference(prompt: String): String? {
-        if (!isNpuActive) return null
+        if (!isNpuActive || sessionHandle == 0L) return null
         return try {
-            val result = NeuronBridge.runInference(prompt.toByteArray())
-            result?.toString(Charsets.UTF_8)
+            NeuronBridge.runInference(sessionHandle, prompt)
         } catch (e: Exception) {
-            Log.e("NpuEngine", "Inference error: ${e.message}")
+            Log.e(TAG, "Inference error: ${e.message}")
             null
         }
     }
 
     fun destroy() {
-        try {
-            NeuronBridge.destroyAdapter(0L)
-        } catch (e: Exception) {
-            Log.e("NpuEngine", "destroy error: ${e.message}")
+        if (sessionHandle != 0L) {
+            NeuronBridge.destroySession(sessionHandle)
+            sessionHandle = 0L
         }
-        llmInference = null
         isNpuActive = false
     }
 }
