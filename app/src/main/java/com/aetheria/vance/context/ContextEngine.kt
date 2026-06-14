@@ -303,10 +303,6 @@ class ContextEngine(private val context: Context) {
         }
         return withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) {
             try {
-                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    Log.w(TAG, "Location permission not granted — skipping")
-                    return null
-                }
                 val fusedClient = LocationServices.getFusedLocationProviderClient(context)
                 val location = suspendCancellableCoroutine<Location?> { cont ->
                     fusedClient.lastLocation
