@@ -180,7 +180,7 @@ class VanceCoreService : Service() {
     if (modelFile.exists()) {
         Log.i("VanceCoreService", "onCreate: reached NPU init block")
         serviceScope.launch(Dispatchers.IO) {
-            val result = npuEngine.setupInferenceEngine()
+            val result = npuEngine.initialize()
             Log.i("VanceCoreService", "onCreate: setupInferenceEngine returned $result")
         }
         Log.d(TAG, "NPU engine init scheduled with model: ${modelFile.absolutePath}")

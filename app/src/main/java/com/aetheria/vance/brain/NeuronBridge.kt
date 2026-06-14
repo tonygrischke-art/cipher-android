@@ -1,87 +1,66 @@
 package com.aetheria.vance.brain
 
-import android.content.Context
 import android.util.Log
 
 /**
  * JNI wrapper for libneuron_bridge.so
- * Loads the native library and exposes Phase 2 NPU inference via TFLite C API + NNAPI shim.
- *
- * SAFE LOADING: All native library loads are wrapped in try/catch.
- * If the library is unavailable, methods degrade gracefully instead of crashing.
+ * Loads libneuron_adapter_mgvi.so from /vendor/lib64/ — the confirmed working NPU adapter.
+ * SAFE LOADING: All native library loads wrapped in try/catch.
  */
-class NeuronBridge {
+object NeuronBridge {
+    private var isLoaded = false
+    private var npuHandle: Long = 0L
 
-    companion object {
-        private const val TAG = "NeuronBridge"
-        @Volatile private var sLoaded = false
-        @Volatile private var sLoadAttempted = false
+    @Volatile private var initState: NpuInitState = NpuInitState.UNINITIALIZED
 
-        /**
-         * Load libneuron_bridge.so safely.
-         * Idempotent — safe to call multiple times.
-         * @return true if library loaded successfully
-         */
-        @Synchronized
-        fun loadLibrary(): Boolean {
-            if (sLoadAttempted) return sLoaded
-            sLoadAttempted = true
-            try {
-                System.loadLibrary("neuron_bridge")
-                sLoaded = true
-                Log.i(TAG, "libneuron_bridge.so loaded")
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "libneuron_bridge.so load failed: ${e.message}")
-                sLoaded = false
-            } catch (e: SecurityException) {
-                Log.e(TAG, "libneuron_bridge.so security error: ${e.message}")
-                sLoaded = false
-            }
-            return sLoaded
-        }
+    enum class NpuInitState { UNINITIALIZED, LOADING, READY, FAILED }
 
-        fun isLoaded(): Boolean = sLoaded
+    fun initialize(): Boolean {
+        if (initState == NpuInitState.READY) return true
+        if (initState == NpuInitState.FAILED) return false
 
-        /**
-         * Initialize the NPU adapter by loading libneuron_adapter_mgvi.so.
-         * @return true if adapter loaded successfully
-         */
-        @JvmStatic
-        external fun initAdapter(): Boolean
-
-        /**
-         * Check if NPU hardware is available.
-         */
-        fun isAvailable(): Boolean {
-            if (!sLoaded) return false
+        synchronized(this) {
+            initState = NpuInitState.LOADING
             return try {
-                nativeIsAvailable()
-            } catch (e: Exception) {
-                Log.e(TAG, "nativeIsAvailable failed: ${e.message}")
+                val handle = loadNativeAdapter()
+                if (handle != 0L) {
+                    npuHandle = handle
+                    isLoaded = true
+                    initState = NpuInitState.READY
+                    Log.i("NeuronBridge", "NPU adapter loaded via libneuron_adapter_mgvi.so")
+                    true
+                } else {
+                    initState = NpuInitState.FAILED
+                    Log.e("NeuronBridge", "dlopen returned null handle — NPU unavailable")
+                    false
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                initState = NpuInitState.FAILED
+                Log.e("NeuronBridge", "UnsatisfiedLinkError: ${e.message}")
+                false
+            } catch (e: SecurityException) {
+                initState = NpuInitState.FAILED
+                Log.e("NeuronBridge", "SecurityException: ${e.message}")
+                false
+            } catch (t: Throwable) {
+                initState = NpuInitState.FAILED
+                Log.e("NeuronBridge", "Unexpected NPU init failure: ${t.message}")
                 false
             }
         }
+    }
 
-        /**
-         * Initialize NPU session with model.
-         * @return Opaque session handle (0 = failure)
-         */
-        @JvmStatic
-        external fun nativeInit(modelPath: String, cacheDir: String): Long
+    fun isReady() = initState == NpuInitState.READY
 
-        /**
-         * Run inference on initialized session.
-         */
-        @JvmStatic
-        external fun nativeInfer(handle: Long, prompt: String): String
+    private external fun loadNativeAdapter(): Long
+    external fun runInference(inputData: ByteArray): ByteArray?
+    external fun destroyAdapter(handle: Long)
 
-        /**
-         * Clean up session resources.
-         */
-        @JvmStatic
-        external fun nativeClose(handle: Long)
-
-        @JvmStatic
-        private external fun nativeIsAvailable(): Boolean
+    init {
+        try {
+            System.loadLibrary("neuron_bridge")
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e("NeuronBridge", "libneuron_bridge.so not found: ${e.message}")
+        }
     }
 }

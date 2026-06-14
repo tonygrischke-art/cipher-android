@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
+import android.Manifest
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -215,7 +216,10 @@ class ContextEngine(private val context: Context) {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
                     val tm = context.getSystemService(Context.TELEPHONY_SERVICE)
                             as? android.telephony.TelephonyManager
-                    val networkType = when (tm?.dataNetworkType) {
+                    val networkType = if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        Log.w(TAG, "READ_PHONE_STATE not granted — reporting generic mobile")
+                        "Mobile"
+                    } else when (tm?.dataNetworkType) {
                         android.telephony.TelephonyManager.NETWORK_TYPE_NR -> "5G"
                         android.telephony.TelephonyManager.NETWORK_TYPE_LTE -> "4G"
                         android.telephony.TelephonyManager.NETWORK_TYPE_UMTS,
@@ -293,8 +297,16 @@ class ContextEngine(private val context: Context) {
     // ── Location ────────────────────────────────────────────────────
 
     private suspend fun getLocationCity(): String? {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "ACCESS_FINE_LOCATION not granted — skipping location")
+            return null
+        }
         return withTimeoutOrNull(TIMEOUT_PER_FIELD_MS) {
             try {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    Log.w(TAG, "Location permission not granted — skipping")
+                    return null
+                }
                 val fusedClient = LocationServices.getFusedLocationProviderClient(context)
                 val location = suspendCancellableCoroutine<Location?> { cont ->
                     fusedClient.lastLocation

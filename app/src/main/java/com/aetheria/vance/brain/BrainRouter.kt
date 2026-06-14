@@ -89,7 +89,7 @@ class BrainRouter(
         val fastOk = fastLlmClient.isServerRunning()
         val mainOk = mainLlmClient.isServerRunning()
         Log.i(TAG, "BrainRouter: Fast=$fastOk (localhost:8080)")
-        Log.i(TAG, "BrainRouter: NPU=${npuEngine.isInitialised}")
+        Log.i(TAG, "BrainRouter: NPU=${npuEngine.isActive()}")
         Log.i(TAG, "BrainRouter: Main=$mainOk (localhost:8081)")
     }
 
@@ -122,50 +122,40 @@ class BrainRouter(
         // Build prompt with system prompt + RAG memories
         val fullPrompt = buildFullPrompt(transcript, context, history)
 
-        // Tier 1: Fast path for simple queries
-        if (isSimple) {
-            val fastResult = fastLlmClient.complete(fullPrompt)
-            if (fastResult != null) {
-                Log.i(TAG, "FastLlm responded for simple query")
-                lastPrompt = transcript
-                lastResponse = fastResult
-                return BrainResult(spokenResponse = fastResult)
-            }
-            Log.w(TAG, "FastLlm unavailable for simple query, falling through")
-        }
+        // Tier 1 removed — NPU tries first for all queries now
 
-        // Tier 2: NPU engine (primary for complex queries)
-        if (npuEngine.isInitialised) {
-            // Tier A: inject few-shot examples from high-reinforcement memories
+        // Tier 2: NPU engine — try first for ALL queries (not just complex)
+        if (npuEngine.isActive()) {
             val adaptedPrompt = buildAdaptivePrompt(transcript, fullPrompt)
-            val npuResult = npuEngine.generate(adaptedPrompt)
+            val npuResult = npuEngine.runInference(adaptedPrompt)
             if (npuResult != null) {
-                // Tier B: preference scoring — if response is short, try a second candidate
-                val finalResult = if (preferenceEngine != null && npuResult.length < 100) {
-                    val candidate2 = npuEngine.generate(adaptedPrompt)
-                    if (candidate2 != null) {
-                        preferenceEngine.selectBest(listOf(npuResult, candidate2))
-                    } else npuResult
-                } else npuResult
                 Log.i(TAG, "NPU responded (adaptive=${adaptedPrompt.length > fullPrompt.length})")
                 lastPrompt = transcript
-                lastResponse = finalResult
-                return BrainResult(spokenResponse = finalResult)
+                lastResponse = npuResult
+                return BrainResult(spokenResponse = npuResult)
             }
-            Log.w(TAG, "NPU returned null, falling through")
+            Log.w(TAG, "NPU returned null — falling back to FastLlmClient")
         }
 
-        // Tier 3: MainLlmClient — CPU fallback
+        // Tier 3: FastLlmClient — localhost:8080, Qwen2.5-0.5B
+        val fastResult = fastLlmClient.complete(fullPrompt)
+        if (fastResult != null) {
+            Log.i(TAG, "Response via FastLlmClient (localhost:8080)")
+            lastPrompt = transcript
+            lastResponse = fastResult
+            return BrainResult(spokenResponse = fastResult)
+        }
+        Log.w(TAG, "FastLlmClient unavailable — trying MainLlmClient")
+
+        // Tier 4: MainLlmClient — localhost:8081, Qwen2.5-1.5B final fallback
         val mainResult = mainLlmClient.complete(fullPrompt)
         if (mainResult != null) {
-            Log.i(TAG, "MainLlm responded")
+            Log.i(TAG, "Response via MainLlmClient (localhost:8081)")
             lastPrompt = transcript
             lastResponse = mainResult
             return BrainResult(spokenResponse = mainResult)
         }
-        Log.w(TAG, "MainLlm unavailable")
-
-        // Tier 4: TfliteLlmEngine removed — all inference via native NNAPI bridge
+        Log.e(TAG, "All inference engines unavailable")
 
         // All engines failed
         Log.e(TAG, "All inference engines unavailable")

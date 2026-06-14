@@ -42,7 +42,12 @@ class IntentHandler(
 
     fun openAppByName(appName: String): ActionExecutor.ActionResult {
         val pm = context.packageManager
-        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val installedApps = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        }
 
         val query = appName.lowercase().trim()
 
@@ -301,7 +306,12 @@ class IntentHandler(
 
     fun searchInstalledApps(query: String): List<Pair<String, String>> {
         val pm = context.packageManager
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        val apps = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+        }
         val q = query.lowercase().trim()
 
         return apps

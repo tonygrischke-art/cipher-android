@@ -7,103 +7,59 @@ import java.io.File
 
 class NpuEngine(private val context: Context) {
 
-    private val TAG = "CipherNpuEngine"
-    @Volatile private var initialized = false
+    private var llmInference: Any? = null
+    private var isNpuActive = false
 
-    companion object {
-        private const val MODEL_PATH =
-            "/data/local/tmp/cipher_models/qwen15_int8.tflite"
-    }
-
-    val isInitialised: Boolean
-        get() = initialized
-
-    fun setupInferenceEngine(): Boolean {
-        // Guard: check RAM before loading model
+    fun initialize(): Boolean {
+        // 1. Check RAM first
         val runtime = Runtime.getRuntime()
         val availMB = runtime.freeMemory() / 1048576
-        val totalMB = runtime.totalMemory() / 1048576
-        Log.w("VanceMemory", "RAM before model load: ${availMB}MB free / ${totalMB}MB total")
         if (availMB < 200) {
-            Log.e("VanceMemory", "CRITICAL: Low RAM (${availMB}MB free) — aborting NPU init to prevent OOM")
+            Log.e("NpuEngine", "Insufficient RAM (${availMB}MB) — skipping NPU init")
             return false
         }
 
-        // Guard: model file must exist
-        val modelFile = File(MODEL_PATH)
+        // 2. Verify model file exists
+        val modelPath = "/data/local/tmp/cipher_models/cipher_model.task"
+        val modelFile = File(modelPath)
         if (!modelFile.exists()) {
-            Log.e(TAG, "Model missing at $MODEL_PATH")
+            Log.e("NpuEngine", "Model file missing at $modelPath — cannot init NPU")
+            return false
+        }
+        Log.i("NpuEngine", "Model found: ${modelFile.length() / 1048576}MB")
+
+        // 3. Init NeuronBridge
+        if (!NeuronBridge.initialize()) {
+            Log.w("NpuEngine", "NeuronBridge unavailable — will fall back to llama.cpp")
             return false
         }
 
-        // Load native library safely
-        val bridgeLoaded = NeuronBridge.loadLibrary()
-        if (!bridgeLoaded) {
-            Log.w(TAG, "NeuronBridge library not available — NPU disabled")
-        }
-
-        // Init adapter (safe even if library didn't load — will return false)
-        val bridgeReady = if (bridgeLoaded) {
-            try {
-                NeuronBridge.initAdapter()
-            } catch (e: Exception) {
-                Log.e(TAG, "NeuronBridge.initAdapter failed: ${e.message}")
-                false
-            }
-        } else false
-
-        if (!bridgeReady) {
-            Log.w(TAG, "NeuronBridge unavailable — continuing with TFLite CPU")
-        }
-
-        // Initialize the TFLite engine via JNI
-        val engineReady = try {
-            VanceNpuJni.initializeModel(MODEL_PATH)
-        } catch (e: Exception) {
-            Log.e(TAG, "VanceNpuJni init failed: ${e.message}")
-            false
-        }
-
-        if (!engineReady) {
-            Log.e(TAG, "VanceNpuJni init failed")
-            return false
-        }
-
-        initialized = true
-        Log.i(TAG, "NpuEngine ready — NPU bridge: $bridgeReady")
+        // 4. NeuronBridge is ready — NPU inference available via JNI
+        isNpuActive = true
+        Log.i("NpuEngine", "NPU engine ready via NeuronBridge")
         return true
     }
 
-    // Legacy compatibility
-    fun init(modelPath: String): Boolean {
-        return setupInferenceEngine()
-    }
+    fun isActive() = isNpuActive
 
-    fun generate(prompt: String): String? {
-        if (!initialized) {
-            Log.e(TAG, "generate called before init")
-            return null
-        }
+    fun runInference(prompt: String): String? {
+        if (!isNpuActive) return null
         return try {
-            VanceNpuJni.runInference(prompt)
+            val result = NeuronBridge.runInference(prompt.toByteArray())
+            result?.toString(Charsets.UTF_8)
         } catch (e: Exception) {
-            Log.e(TAG, "Inference error: ${e.message}")
+            Log.e("NpuEngine", "Inference error: ${e.message}")
             null
         }
     }
 
-    fun generateResponse(prompt: String): String? = generate(prompt)
-
-    fun teardown() {
+    fun destroy() {
         try {
-            VanceNpuJni.terminateEngine()
+            NeuronBridge.destroyAdapter(0L)
         } catch (e: Exception) {
-            Log.e(TAG, "teardown error: ${e.message}")
+            Log.e("NpuEngine", "destroy error: ${e.message}")
         }
-        initialized = false
-    }
-
-    fun close() {
-        teardown()
+        llmInference = null
+        isNpuActive = false
     }
 }
