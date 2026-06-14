@@ -26,7 +26,7 @@ class BootReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun runTfliteSmokeTest(context: Context) {
+    private fun runTfliteSmokeTest() {
         try {
             // Just verify the native library loads — don't load the model at boot
             Log.i(TAG, "Smoke test: VanceNpuJni loaded=${com.aetheria.vance.npu.VanceNpuJni.isLoaded()}")

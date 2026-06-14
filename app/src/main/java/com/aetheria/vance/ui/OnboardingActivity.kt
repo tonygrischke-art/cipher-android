@@ -273,8 +273,8 @@ fun OnboardingFlow(
                 label = "page_transition"
             ) { page ->
                 when (page) {
-                    0 -> WelcomePage(viewModel)
-                    1 -> PermissionsPage(viewModel)
+                    0 -> WelcomePage()
+                    1 -> PermissionsPage()
                     2 -> AccessibilityPage(viewModel)
                     3 -> ShizukuPage(viewModel)
                     4 -> WakeWordPage(viewModel)
@@ -316,7 +316,7 @@ fun OnboardingFlow(
 // ── Page 0: Welcome ──────────────────────────────────────────────
 
 @Composable
-fun WelcomePage(viewModel: OnboardingViewModel) {
+fun WelcomePage() {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 0.95f,
@@ -383,7 +383,7 @@ fun WelcomePage(viewModel: OnboardingViewModel) {
 // ── Page 1: Permissions ──────────────────────────────────────────
 
 @Composable
-fun PermissionsPage(viewModel: OnboardingViewModel) {
+fun PermissionsPage() {
     val context = LocalContext.current
 
     val permissions = listOf(

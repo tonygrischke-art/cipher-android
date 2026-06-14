@@ -11,8 +11,7 @@ import android.util.Log
 import com.aetheria.vance.shizuku.ShizukuBridge
 
 class IntentHandler(
-    private val context: Context,
-    private val shizukuBridge: ShizukuBridge = ShizukuBridge()
+    private val context: Context
 ) {
 
     companion object {
@@ -232,17 +231,11 @@ class IntentHandler(
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-            val displayTime = String.format("%02d:%02d", hour, minute)
+            val displayTime = String.format(java.util.Locale.US, "%02d:%02d", hour, minute)
             ActionExecutor.ActionResult(true, "Alarm set for $displayTime", "Alarm set for $displayTime")
         } catch (e: Exception) {
             Log.w(TAG, "Intent-based alarm failed, trying Shizuku", e)
             try {
-                val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
-                val cal = java.util.Calendar.getInstance().apply {
-                    set(java.util.Calendar.HOUR_OF_DAY, hour)
-                    set(java.util.Calendar.MINUTE, minute)
-                    set(java.util.Calendar.SECOND, 0)
-                }
                 // Use alarm via Shizuku if intent fails
                 ActionExecutor.ActionResult(false, e.message ?: "Alarm failed", "I couldn't set that alarm. Try opening the Clock app.")
             } catch (e2: Exception) {

@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.util.Log
+import androidx.core.content.ContextCompat
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -114,12 +115,7 @@ class FloatingOrbService : Service() {
             }
         }
         val filter = IntentFilter(VoicePipeline.ACTION_STATE_CHANGE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(stateReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
-            registerReceiver(stateReceiver, filter)
-        }
+        ContextCompat.registerReceiver(this, stateReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private fun unregisterStateReceiver() {

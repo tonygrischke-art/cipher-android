@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
+import android.annotation.SuppressLint
 import android.Manifest
 import android.media.AudioManager
 import android.net.ConnectivityManager
@@ -216,6 +217,7 @@ class ContextEngine(private val context: Context) {
                 caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
                     val tm = context.getSystemService(Context.TELEPHONY_SERVICE)
                             as? android.telephony.TelephonyManager
+                    @SuppressLint("MissingPermission") // Checked above via ContextCompat.checkSelfPermission
                     val networkType = if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                         Log.w(TAG, "READ_PHONE_STATE not granted — reporting generic mobile")
                         "Mobile"

@@ -331,6 +331,9 @@ interface SkillDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(vararg skills: SkillEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(skills: List<SkillEntity>)
+
     @Query("SELECT * FROM skills WHERE approved = 1")
     suspend fun getApprovedSkills(): List<SkillEntity>
 
@@ -575,7 +578,7 @@ class MemoryStore(context: Context) {
 
     suspend fun insertSkills(skills: List<SkillEntity>) = withContext(Dispatchers.IO) {
         try {
-            db.skillDao().insertAll(*skills.toTypedArray())
+            db.skillDao().insertAll(skills)
         } catch (e: Exception) {
             Log.e("MemoryStore", "insertSkills failed", e)
         }

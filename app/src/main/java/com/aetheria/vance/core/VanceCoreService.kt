@@ -16,6 +16,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.aetheria.vance.R
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.brain.BrainRouter
@@ -221,35 +222,11 @@ class VanceCoreService : Service() {
     }
 
     private fun registerNotificationReceiver() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(
-                notificationReceiver,
-                IntentFilter(ACTION_NOTIFICATION_RECEIVED),
-                RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
-            registerReceiver(
-                notificationReceiver,
-                IntentFilter(ACTION_NOTIFICATION_RECEIVED)
-            )
-        }
+        ContextCompat.registerReceiver(this, notificationReceiver, IntentFilter(ACTION_NOTIFICATION_RECEIVED), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private fun registerAppChangeReceiver() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(
-                appChangeReceiver,
-                IntentFilter(ACTION_FOREGROUND_APP_CHANGED),
-                RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
-            registerReceiver(
-                appChangeReceiver,
-                IntentFilter(ACTION_FOREGROUND_APP_CHANGED)
-            )
-        }
+        ContextCompat.registerReceiver(this, appChangeReceiver, IntentFilter(ACTION_FOREGROUND_APP_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     // ── Receivers ───────────────────────────────────────────────────
@@ -308,12 +285,12 @@ class VanceCoreService : Service() {
     // ── Transcript deduplication (Fix 0A) ──────────────────────────────
     private var lastTranscript: String? = null
     private var lastTranscriptTime: Long = 0L
-    private val DEDUP_WINDOW_MS = 500L
+    private val dedupWindowMs = 500L
 
     private fun handleTranscript(transcript: String) {
         val now = System.currentTimeMillis()
         // Deduplicate: drop identical transcript within window
-        if (transcript == lastTranscript && (now - lastTranscriptTime) < DEDUP_WINDOW_MS) {
+        if (transcript == lastTranscript && (now - lastTranscriptTime) < dedupWindowMs) {
             Log.d(TAG, "Duplicate transcript dropped: \"$transcript\"")
             return
         }

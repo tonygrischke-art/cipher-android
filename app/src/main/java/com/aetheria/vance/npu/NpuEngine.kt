@@ -7,7 +7,7 @@ import java.io.File
 
 class NpuEngine(private val context: Context) {
 
-    private val TAG = "NpuEngine"
+    private val tag = "NpuEngine"
     private var sessionHandle: Long = 0L
     private var isNpuActive = false
 
@@ -16,7 +16,7 @@ class NpuEngine(private val context: Context) {
         val runtime = Runtime.getRuntime()
         val availMB = runtime.freeMemory() / 1048576
         if (availMB < 200) {
-            Log.e(TAG, "Insufficient RAM (${availMB}MB) — skipping NPU init")
+            Log.e(tag, "Insufficient RAM (${availMB}MB) — skipping NPU init")
             return false
         }
 
@@ -24,14 +24,14 @@ class NpuEngine(private val context: Context) {
         val modelPath = "/data/local/tmp/cipher_models/qwen05.tflite"
         val modelFile = File(modelPath)
         if (!modelFile.exists()) {
-            Log.e(TAG, "Model file missing at $modelPath — cannot init NPU")
+            Log.e(tag, "Model file missing at $modelPath — cannot init NPU")
             return false
         }
-        Log.i(TAG, "Model found: ${modelFile.length() / 1048576}MB")
+        Log.i(tag, "Model found: ${modelFile.length() / 1048576}MB")
 
         // 3. Init NeuronBridge
         if (!NeuronBridge.initialize()) {
-            Log.w(TAG, "NeuronBridge unavailable — will fall back to llama.cpp")
+            Log.w(tag, "NeuronBridge unavailable — will fall back to llama.cpp")
             return false
         }
 
@@ -39,12 +39,12 @@ class NpuEngine(private val context: Context) {
         val cacheDir = context.cacheDir.absolutePath
         sessionHandle = NeuronBridge.createSession(modelPath, cacheDir)
         if (sessionHandle == 0L) {
-            Log.e(TAG, "Failed to create NPU session")
+            Log.e(tag, "Failed to create NPU session")
             return false
         }
 
         isNpuActive = true
-        Log.i(TAG, "NPU engine ready — session handle=$sessionHandle")
+        Log.i(tag, "NPU engine ready — session handle=$sessionHandle")
         return true
     }
 
@@ -55,7 +55,7 @@ class NpuEngine(private val context: Context) {
         return try {
             NeuronBridge.runInference(sessionHandle, prompt)
         } catch (e: Exception) {
-            Log.e(TAG, "Inference error: ${e.message}")
+            Log.e(tag, "Inference error: ${e.message}")
             null
         }
     }

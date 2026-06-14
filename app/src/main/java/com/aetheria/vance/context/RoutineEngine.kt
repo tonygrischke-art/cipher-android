@@ -3,14 +3,14 @@ package com.aetheria.vance.context
 import android.Manifest
 import android.app.AlarmManager
 import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
-import android.os.BatteryManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.os.BatteryManager
+import android.os.Build
 import com.aetheria.vance.actions.ActionExecutor
 import com.aetheria.vance.shizuku.ShizukuBridge
 import kotlinx.coroutines.CoroutineScope
@@ -54,34 +54,10 @@ class RoutineEngine(
         )
 
         // Time check receiver (triggered by AlarmManager every minute)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(
-                timeCheckReceiver,
-                IntentFilter(ACTION_CHECK_TIME_ROUTINES),
-                android.content.Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
-            context.registerReceiver(
-                timeCheckReceiver,
-                IntentFilter(ACTION_CHECK_TIME_ROUTINES)
-            )
-        }
+        ContextCompat.registerReceiver(context, timeCheckReceiver, IntentFilter(ACTION_CHECK_TIME_ROUTINES), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         // App foreground change receiver
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(
-                appChangeReceiver,
-                IntentFilter(com.aetheria.vance.accessibility.VanceAccessibilityService.ACTION_FOREGROUND_APP_CHANGED),
-                android.content.Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UNSPECIFIED_REGISTER_RECEIVER_FLAG")
-            context.registerReceiver(
-                appChangeReceiver,
-                IntentFilter(com.aetheria.vance.accessibility.VanceAccessibilityService.ACTION_FOREGROUND_APP_CHANGED)
-            )
-        }
+        ContextCompat.registerReceiver(context, appChangeReceiver, IntentFilter(com.aetheria.vance.accessibility.VanceAccessibilityService.ACTION_FOREGROUND_APP_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     private val batteryReceiver = object : BroadcastReceiver() {
@@ -158,7 +134,7 @@ class RoutineEngine(
             val hour = now.get(java.util.Calendar.HOUR_OF_DAY)
             val minute = now.get(java.util.Calendar.MINUTE)
             val dayOfWeek = now.get(java.util.Calendar.DAY_OF_WEEK)
-            val timeStr = String.format("%02d:%02d", hour, minute)
+            val timeStr = String.format(java.util.Locale.US, "%02d:%02d", hour, minute)
 
             val timeRoutines = memoryStore.routines.getByTriggerType("time")
             for (routine in timeRoutines) {
@@ -167,6 +143,10 @@ class RoutineEngine(
                 if (parts.size >= 2) {
                     val routineHour = parts[0].trim().toIntOrNull() ?: continue
                     val routineMin = parts[1].trim().toIntOrNull() ?: continue
+                    if (parts.size >= 3) {
+                        val routineDay = parts[2].trim().toIntOrNull() ?: continue
+                        if (routineDay != dayOfWeek) continue
+                    }
                     if (routineHour == hour && routineMin == minute) {
                         // Check day if specified
                         if (parts.size >= 3) {

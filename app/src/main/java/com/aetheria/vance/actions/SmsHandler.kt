@@ -11,8 +11,7 @@ import androidx.core.content.ContextCompat
 import com.aetheria.vance.shizuku.ShizukuBridge
 
 class SmsHandler(
-    private val context: Context,
-    private val shizukuBridge: ShizukuBridge = ShizukuBridge()
+    private val context: Context
 ) {
 
     companion object {

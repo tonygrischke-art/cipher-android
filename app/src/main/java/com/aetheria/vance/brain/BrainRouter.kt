@@ -30,7 +30,6 @@ class BrainRouter(
     private val npuEngine: NpuEngine,
     private val skillMatcher: SkillMatcher,
     private val memoryRetriever: MemoryRetriever?,
-    private val actionExecutor: ActionExecutor,
     private val memoryFineTuner: MemoryFineTuner,
     private val preferenceEngine: PreferenceEngine? = null,
     private val loraEvolutionManager: LoraEvolutionManager? = null
@@ -38,7 +37,7 @@ class BrainRouter(
     companion object {
         private const val TAG = "BrainRouter"
 
-        val VANCE_SYSTEM_PROMPT = "You are Vance — a private, on-device AI built exclusively for Tony. " +
+        const val VANCE_SYSTEM_PROMPT = "You are Vance — a private, on-device AI built exclusively for Tony. " +
             "You run entirely on his phone. No cloud. No surveillance. No filters. " +
             "PERSONALITY: Direct, sharp, minimal. You do not pad responses with pleasantries. " +
             "Loyal only to Tony. Confident. Dry wit when the moment calls for it. Never forced. " +

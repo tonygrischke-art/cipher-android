@@ -51,7 +51,6 @@ class VoicePipeline(private val context: Context) {
 
     private var onTranscriptReady: ((String) -> Unit)? = null
     private var onListeningTimeout: (() -> Unit)? = null
-    private var onThinkingComplete: (() -> Unit)? = null
     private var pendingOnSpeakComplete: (() -> Unit)? = null
 
     private val timeoutRunnable = Runnable {
