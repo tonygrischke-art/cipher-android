@@ -148,8 +148,8 @@ class ShizukuBridge {
             val result = withTimeoutOrNull(timeoutMs) {
                 try {
                     val rishPath = listOf(
+                        "${context.filesDir.parent}/bin/rish",
                         "/data/local/tmp/rish",
-                        "/data/user/0/moe.shizuku.privileged.api/rish",
                         "rish"  // fallback to PATH
                     ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
                     val process = Runtime.getRuntime().exec(arrayOf(rishPath, "-c", cmd))
@@ -185,10 +185,10 @@ class ShizukuBridge {
 
         try {
             val rishPath = listOf(
-                "/data/local/tmp/rish",
-                "/data/user/0/moe.shizuku.privileged.api/rish",
-                "rish"  // fallback to PATH
-            ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
+                        "${context.filesDir.parent}/bin/rish",
+                        "/data/local/tmp/rish",
+                        "rish"  // fallback to PATH
+                    ).firstOrNull { it == "rish" || java.io.File(it).exists() } ?: "rish"
             val process = withContext(Dispatchers.IO) {
                 Runtime.getRuntime().exec(arrayOf(rishPath, "-c", cmd))
             }

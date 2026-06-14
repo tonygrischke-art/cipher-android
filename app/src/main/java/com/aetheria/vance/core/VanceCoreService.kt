@@ -200,11 +200,7 @@ class VanceCoreService : Service() {
     // Start FloatingOrbService if overlay permission is granted
         if (Settings.canDrawOverlays(this)) {
             val orbIntent = Intent(this, FloatingOrbService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(orbIntent)
-            } else {
-                startService(orbIntent)
-            }
+            startForegroundService(orbIntent)
             Log.d(TAG, "FloatingOrbService started")
         } else {
             Log.w(TAG, "SYSTEM_ALERT_WINDOW not granted — FloatingOrbService not started")

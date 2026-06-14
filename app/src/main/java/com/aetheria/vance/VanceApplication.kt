@@ -54,10 +54,6 @@ class VanceApplication : Application() {
 
         // Start core service
         val serviceIntent = Intent(this, VanceCoreService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
+        startForegroundService(serviceIntent)
     }
 }

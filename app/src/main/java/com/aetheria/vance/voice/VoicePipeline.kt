@@ -199,15 +199,7 @@ class VoicePipeline(private val context: Context) {
 
         isSpeaking = true
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
-        } else {
-            @Suppress("DEPRECATION")
-            val hashParams = java.util.HashMap<String, String>()
-            hashParams[TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID] = utteranceId
-            @Suppress("DEPRECATION")
-            textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, hashParams)
-        }
+        textToSpeech?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
     }
 
     private fun handleSpeakDone() {

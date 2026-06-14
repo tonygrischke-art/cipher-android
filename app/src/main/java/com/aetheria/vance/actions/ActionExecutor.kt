@@ -392,7 +392,7 @@ class ActionExecutor(
     // ── TAKE_SCREENSHOT ─────────────────────────────────────────────
 
     private suspend fun handleTakeScreenshot(params: JSONObject): ActionResult {
-        val outputPath = params.optString("output_path", "/sdcard/cipher_screenshot.png")
+        val outputPath = params.optString("output_path", "${android.os.Environment.getExternalStorageDirectory().absolutePath}/cipher_screenshot.png")
         return try {
             val output = shizukuBridge.executeBlocking("screencap -p $outputPath")
             ActionResult(true, output, "Screenshot saved to $outputPath")

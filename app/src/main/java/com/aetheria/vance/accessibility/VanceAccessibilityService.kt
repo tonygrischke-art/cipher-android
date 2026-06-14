@@ -206,10 +206,6 @@ class VanceAccessibilityService : AccessibilityService() {
     // ── Gestures ────────────────────────────────────────────────────
 
     fun swipe(direction: String): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.w(TAG, "Swipe requires API 24+")
-            return false
-        }
         return try {
             val startX = 500f
             val startY = 1000f
@@ -245,7 +241,7 @@ class VanceAccessibilityService : AccessibilityService() {
     fun takeScreenshotDescription(): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             return try {
-                val outputPath = "/sdcard/cipher_screenshot.png"
+                val outputPath = "${android.os.Environment.getExternalStorageDirectory().absolutePath}/cipher_screenshot.png"
                 takeScreenshot(
                     android.view.Display.DEFAULT_DISPLAY,
                     mainExecutor,

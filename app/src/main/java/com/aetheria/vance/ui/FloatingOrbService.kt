@@ -130,19 +130,14 @@ class FloatingOrbService : Service() {
     }
 
     private fun createOrb() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+        if (!Settings.canDrawOverlays(this)) {
             Log.e(TAG, "SYSTEM_ALERT_WINDOW not granted — orb cannot show")
             return
         }
         val params = WindowManager.LayoutParams().apply {
             width = 160
             height = 160
-            type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            }
+            type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
             format = PixelFormat.TRANSLUCENT

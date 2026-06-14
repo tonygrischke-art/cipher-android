@@ -210,11 +210,7 @@ fun OnboardingFlow(
     // Every page requires explicit user tap on Next/Continue button.
     LaunchedEffect(Unit) {
         val coreIntent = android.content.Intent(ctx, com.aetheria.vance.core.VanceCoreService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            ctx.startForegroundService(coreIntent)
-        } else {
-            ctx.startService(coreIntent)
-        }
+        ctx.startForegroundService(coreIntent)
         ctx.startService(android.content.Intent(ctx, com.aetheria.vance.voice.WakeWordService::class.java))
         ctx.startService(android.content.Intent(ctx, FloatingOrbService::class.java))
 
