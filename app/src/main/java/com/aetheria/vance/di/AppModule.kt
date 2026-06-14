@@ -128,19 +128,17 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSmsHandler(
-        @ApplicationContext context: Context,
-        shizukuBridge: ShizukuBridge
+        @ApplicationContext context: Context
     ): SmsHandler {
-        return SmsHandler(context, shizukuBridge)
+        return SmsHandler(context)
     }
 
     @Provides
     @Singleton
     fun provideIntentHandler(
-        @ApplicationContext context: Context,
-        shizukuBridge: ShizukuBridge
+        @ApplicationContext context: Context
     ): IntentHandler {
-        return IntentHandler(context, shizukuBridge)
+        return IntentHandler(context)
     }
 
     @Provides
@@ -170,8 +168,7 @@ object AppModule {
         mainLlmClient: MainLlmClient,
         npuEngine: NpuEngine,
         skillMatcher: SkillMatcher,
-        memoryRetriever: MemoryRetriever,
-        actionExecutor: ActionExecutor,
+        memoryRetriever: MemoryRetriever?,
         memoryFineTuner: MemoryFineTuner,
         preferenceEngine: PreferenceEngine,
         loraEvolutionManager: LoraEvolutionManager
@@ -182,7 +179,6 @@ object AppModule {
             npuEngine = npuEngine,
             skillMatcher = skillMatcher,
             memoryRetriever = memoryRetriever,
-            actionExecutor = actionExecutor,
             memoryFineTuner = memoryFineTuner,
             preferenceEngine = preferenceEngine,
             loraEvolutionManager = loraEvolutionManager

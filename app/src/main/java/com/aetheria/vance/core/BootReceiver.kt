@@ -18,7 +18,7 @@ class BootReceiver : BroadcastReceiver() {
             Thread {
                 try {
                     Thread.sleep(2000)
-                    runTfliteSmokeTest(context)
+                    runTfliteSmokeTest()
                 } catch (e: Exception) {
                     Log.e(TAG, "Smoke test thread error: ${e.message}")
                 }
